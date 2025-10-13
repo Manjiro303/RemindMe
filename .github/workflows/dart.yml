@@ -30,6 +30,12 @@ jobs:
           channel: 'stable'
           cache: true
 
+      - name: 🎨 Generate Launcher Icons
+        run: flutter pub run flutter_launcher_icons
+
+      - name: 🧹 Clean Project
+        run: flutter clean
+
       - name: 📦 Install Dependencies
         run: flutter pub get
 
