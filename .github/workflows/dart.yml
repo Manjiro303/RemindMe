@@ -28,14 +28,14 @@ jobs:
         with:
           distribution: 'zulu'
           java-version: '17'
-          cache: 'gradle'
 
-      - name: 📦 Install Dependencies
+      - name: 🔧 Configure Flutter
+        run: |
+          flutter config --no-analytics
+          flutter --version
+
+      - name: 📦 Get Dependencies
         run: flutter pub get
-
-      - name: 🎨 Generate Launcher Icons
-        run: flutter pub run flutter_launcher_icons
-        continue-on-error: true
 
       - name: 🔍 Analyze Code
         run: flutter analyze
@@ -56,22 +56,27 @@ jobs:
         with:
           name: debug-apk
           path: build/app/outputs/flutter-apk/app-debug.apk
+          if-no-files-found: error
 
       - name: 📤 Upload Release APKs
         uses: actions/upload-artifact@v4
         with:
           name: release-apks
           path: build/app/outputs/flutter-apk/app-*-release.apk
+          if-no-files-found: error
 
       - name: 📊 Build Summary
+        if: success()
         run: |
           echo "### 🎉 Build Successful!" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**APK Files Generated:**" >> $GITHUB_STEP_SUMMARY
           echo "- Debug APK: ✅" >> $GITHUB_STEP_SUMMARY
-          echo "- Release APKs: ✅" >> $GITHUB_STEP_SUMMARY
+          echo "- Release APKs (split per ABI): ✅" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Download artifacts from the Actions tab!" >> $GITHUB_STEP_SUMMARY
+          echo "📥 Download artifacts from the Actions tab!" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          ls -lh build/app/outputs/flutter-apk/ >> $GITHUB_STEP_SUMMARY
 
   build-appbundle:
     name: Build Android App Bundle
@@ -94,9 +99,11 @@ jobs:
         with:
           distribution: 'zulu'
           java-version: '17'
-          cache: 'gradle'
 
-      - name: 📦 Install Dependencies
+      - name: 🔧 Configure Flutter
+        run: flutter config --no-analytics
+
+      - name: 📦 Get Dependencies
         run: flutter pub get
 
       - name: 🏗️ Build App Bundle
@@ -107,6 +114,15 @@ jobs:
         with:
           name: app-bundle
           path: build/app/outputs/bundle/release/app-release.aab
+          if-no-files-found: error
+
+      - name: 📊 Bundle Summary
+        if: success()
+        run: |
+          echo "### 📦 App Bundle Created!" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Ready for Google Play Store upload" >> $GITHUB_STEP_SUMMARY
+          ls -lh build/app/outputs/bundle/release/ >> $GITHUB_STEP_SUMMARY
 
   lint-and-format:
     name: Code Quality Check
@@ -123,7 +139,10 @@ jobs:
           channel: 'stable'
           cache: true
 
-      - name: 📦 Install Dependencies
+      - name: 🔧 Configure Flutter
+        run: flutter config --no-analytics
+
+      - name: 📦 Get Dependencies
         run: flutter pub get
 
       - name: 🔍 Run Flutter Analyze
@@ -138,5 +157,5 @@ jobs:
         run: |
           echo "### 📊 Code Quality Check Complete" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "✅ Analysis completed" >> $GITHUB_STEP_SUMMARY
-          echo "✅ Formatting checked" >> $GITHUB_STEP_SUMMARY
+          echo "✅ Static analysis completed" >> $GITHUB_STEP_SUMMARY
+          echo "✅ Code formatting checked" >> $GITHUB_STEP_SUMMARY
