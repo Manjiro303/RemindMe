@@ -40,18 +40,15 @@ jobs:
 
       - name: 🎨 Create Default Icon (if missing)
         run: |
-          # Create mipmap directories if they don't exist
           mkdir -p android/app/src/main/res/mipmap-hdpi
           mkdir -p android/app/src/main/res/mipmap-mdpi
           mkdir -p android/app/src/main/res/mipmap-xhdpi
           mkdir -p android/app/src/main/res/mipmap-xxhdpi
           mkdir -p android/app/src/main/res/mipmap-xxxhdpi
           
-          # Check if icon exists, if not create a simple one using ImageMagick
           if [ ! -f "android/app/src/main/res/mipmap-hdpi/ic_launcher.png" ]; then
             sudo apt-get update -qq && sudo apt-get install -y -qq imagemagick > /dev/null 2>&1
             
-            # Create icons of different sizes with "R" for RemindMe
             convert -size 72x72 xc:#2196F3 -font DejaVu-Sans -pointsize 48 -fill white -gravity center -annotate +0+0 "R" android/app/src/main/res/mipmap-hdpi/ic_launcher.png
             convert -size 48x48 xc:#2196F3 -font DejaVu-Sans -pointsize 32 -fill white -gravity center -annotate +0+0 "R" android/app/src/main/res/mipmap-mdpi/ic_launcher.png
             convert -size 96x96 xc:#2196F3 -font DejaVu-Sans -pointsize 64 -fill white -gravity center -annotate +0+0 "R" android/app/src/main/res/mipmap-xhdpi/ic_launcher.png
@@ -67,9 +64,7 @@ jobs:
         run: flutter analyze
         continue-on-error: true
 
-      - name: 🧪 Run Tests
-        run: flutter test
-        continue-on-error: true
+      # REMOVED: Run Tests step (no test directory)
 
       - name: 🏗️ Build Debug APK
         run: flutter build apk --debug
@@ -135,18 +130,15 @@ jobs:
 
       - name: 🎨 Create Default Icon (if missing)
         run: |
-          # Create mipmap directories if they don't exist
           mkdir -p android/app/src/main/res/mipmap-hdpi
           mkdir -p android/app/src/main/res/mipmap-mdpi
           mkdir -p android/app/src/main/res/mipmap-xhdpi
           mkdir -p android/app/src/main/res/mipmap-xxhdpi
           mkdir -p android/app/src/main/res/mipmap-xxxhdpi
           
-          # Check if icon exists, if not create a simple one using ImageMagick
           if [ ! -f "android/app/src/main/res/mipmap-hdpi/ic_launcher.png" ]; then
             sudo apt-get update -qq && sudo apt-get install -y -qq imagemagick > /dev/null 2>&1
             
-            # Create icons of different sizes with "R" for RemindMe
             convert -size 72x72 xc:#2196F3 -font DejaVu-Sans -pointsize 48 -fill white -gravity center -annotate +0+0 "R" android/app/src/main/res/mipmap-hdpi/ic_launcher.png
             convert -size 48x48 xc:#2196F3 -font DejaVu-Sans -pointsize 32 -fill white -gravity center -annotate +0+0 "R" android/app/src/main/res/mipmap-mdpi/ic_launcher.png
             convert -size 96x96 xc:#2196F3 -font DejaVu-Sans -pointsize 64 -fill white -gravity center -annotate +0+0 "R" android/app/src/main/res/mipmap-xhdpi/ic_launcher.png
