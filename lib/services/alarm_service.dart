@@ -24,8 +24,9 @@ class AlarmService {
       print('⏰ Scheduled time: $scheduledTime');
       print('🆔 Alarm ID: $alarmId');
 
-      // Cancel any existing alarm first
+      // CRITICAL FIX: Cancel existing alarm first and wait
       await cancelAlarm(reminder.id);
+      await Future.delayed(const Duration(milliseconds: 500));
 
       // Schedule alarm using native AlarmManager
       final success = await _platformService.scheduleNativeAlarm(
@@ -75,12 +76,18 @@ class AlarmService {
     return scheduledTime;
   }
 
-  // Cancel alarm
+  // Cancel alarm - ENHANCED VERSION
   Future<void> cancelAlarm(String reminderId) async {
     try {
       final int alarmId = reminderId.hashCode.abs() % 2147483647;
+      
+      // Cancel the native alarm
       await _platformService.cancelNativeAlarm(alarmId);
-      print('✅ Alarm cancelled for ID: $reminderId');
+      
+      // Also cancel any pending notifications
+      await _platformService.cancelNotification(alarmId);
+      
+      print('✅ Alarm and notification cancelled for ID: $reminderId (alarm ID: $alarmId)');
     } catch (e) {
       print('❌ Error cancelling alarm: $e');
     }
@@ -94,11 +101,20 @@ class AlarmService {
 
       print('📋 Found ${reminders.length} total reminders');
 
+      // First, cancel all existing alarms
+      for (var reminder in reminders) {
+        await cancelAlarm(reminder.id);
+      }
+      
+      // Wait a bit to ensure cancellations are processed
+      await Future.delayed(const Duration(seconds: 1));
+
+      // Then reschedule enabled ones
       for (var reminder in reminders) {
         if (reminder.enabled) {
           final success = await scheduleAlarm(reminder);
           if (success) count++;
-          await Future.delayed(const Duration(milliseconds: 200));
+          await Future.delayed(const Duration(milliseconds: 300));
         }
       }
 
