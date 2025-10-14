@@ -10,9 +10,23 @@ import 'utils/theme.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
-  await AndroidAlarmManager.initialize();
-  await NotificationService().initialize();
+  // Initialize alarm manager
+  try {
+    await AndroidAlarmManager.initialize();
+    print('✅ Alarm manager initialized');
+  } catch (e) {
+    print('❌ Error initializing alarm manager: $e');
+  }
   
+  // Initialize notifications
+  try {
+    await NotificationService().initialize();
+    print('✅ Notification service initialized');
+  } catch (e) {
+    print('❌ Error initializing notifications: $e');
+  }
+  
+  // Lock orientation to portrait
   SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,
     DeviceOrientation.portraitDown,
