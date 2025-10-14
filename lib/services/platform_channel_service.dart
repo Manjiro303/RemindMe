@@ -3,16 +3,14 @@ import 'package:flutter/services.dart';
 class PlatformChannelService {
   static final PlatformChannelService _instance = PlatformChannelService._internal();
   factory PlatformChannelService() => _instance;
-  PlatformChannelService._internal();
+  PlatformChannelService._internal() {
+    _setupRingtoneListener();
+  }
 
   static const platform = MethodChannel('com.reminder.myreminders/alarm');
   static const ringtoneChannel = MethodChannel('com.reminder.myreminders/ringtone');
 
   String? _selectedRingtoneUri;
-
-  PlatformChannelService() {
-    _setupRingtoneListener();
-  }
 
   void _setupRingtoneListener() {
     ringtoneChannel.setMethodCallHandler((call) async {
