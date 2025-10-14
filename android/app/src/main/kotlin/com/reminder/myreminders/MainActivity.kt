@@ -11,16 +11,18 @@ import android.content.Context
 import android.media.RingtoneManager
 import android.net.Uri
 import android.util.Log
+import android.app.PendingIntent
 
 class MainActivity: FlutterActivity() {
     private val CHANNEL = "com.reminder.myreminders/permissions"
     private val RINGTONE_CHANNEL = "com.reminder.myreminders/ringtone"
+    private val ALARM_CHANNEL = "com.reminder.myreminders/alarm"
     private val RINGTONE_PICKER_REQUEST = 999
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         
-        // Permission channel
+        // ==================== PERMISSION CHANNEL ====================
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler { call, result ->
             when (call.method) {
                 "openSettings" -> {
@@ -46,7 +48,7 @@ class MainActivity: FlutterActivity() {
             }
         }
         
-        // Ringtone picker channel
+        // ==================== RINGTONE CHANNEL ====================
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, RINGTONE_CHANNEL).setMethodCallHandler { call, result ->
             when (call.method) {
                 "pickRingtone" -> {
@@ -64,8 +66,42 @@ class MainActivity: FlutterActivity() {
                 else -> result.notImplemented()
             }
         }
+        
+        // ==================== ALARM CHANNEL ====================
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, ALARM_CHANNEL).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "scheduleAlarm" -> {
+                    try {
+                        val alarmId = call.argument<Int>("alarmId") ?: 0
+                        val timeMillis = call.argument<Long>("scheduledTimeMillis") ?: 0L
+                        val title = call.argument<String>("title") ?: "Reminder"
+                        val body = call.argument<String>("body") ?: ""
+                        val soundUri = call.argument<String>("soundUri") ?: ""
+                        val priority = call.argument<String>("priority") ?: "Medium"
+                        
+                        scheduleNativeAlarm(alarmId, timeMillis, title, body, soundUri, priority)
+                        result.success(true)
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error in scheduleAlarm: ${e.message}")
+                        result.error("ALARM_ERROR", e.message, null)
+                    }
+                }
+                "cancelAlarm" -> {
+                    try {
+                        val alarmId = call.argument<Int>("alarmId") ?: 0
+                        cancelNativeAlarm(alarmId)
+                        result.success(true)
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error in cancelAlarm: ${e.message}")
+                        result.error("CANCEL_ERROR", e.message, null)
+                    }
+                }
+                else -> result.notImplemented()
+            }
+        }
     }
 
+    // ==================== SETTINGS ====================
     private fun openAppSettings() {
         val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
             data = Uri.parse("package:$packageName")
@@ -73,6 +109,7 @@ class MainActivity: FlutterActivity() {
         startActivity(intent)
     }
     
+    // ==================== RINGTONE PICKER ====================
     private fun pickRingtone() {
         val intent = Intent(RingtoneManager.ACTION_RINGTONE_PICKER).apply {
             putExtra(RingtoneManager.EXTRA_RINGTONE_TYPE, RingtoneManager.TYPE_ALARM)
@@ -91,7 +128,7 @@ class MainActivity: FlutterActivity() {
             val uri: Uri? = data?.getParcelableExtra(RingtoneManager.EXTRA_RINGTONE_PICKED_URI)
             
             if (uri != null) {
-                Log.d("MainActivity", "Selected ringtone: $uri")
+                Log.d(TAG, "Selected ringtone: $uri")
                 
                 // Send result back to Flutter
                 flutterEngine?.dartExecutor?.binaryMessenger?.let { messenger ->
@@ -100,7 +137,105 @@ class MainActivity: FlutterActivity() {
                         uri.toString()
                     )
                 }
+            } else {
+                Log.d(TAG, "No ringtone selected")
             }
         }
+    }
+    
+    // ==================== NATIVE ALARM SCHEDULING ====================
+    private fun scheduleNativeAlarm(
+        alarmId: Int,
+        timeMillis: Long,
+        title: String,
+        body: String,
+        soundUri: String,
+        priority: String
+    ) {
+        val alarmManager = getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        
+        Log.d(TAG, "📅 Scheduling native alarm:")
+        Log.d(TAG, "  - ID: $alarmId")
+        Log.d(TAG, "  - Time: $timeMillis")
+        Log.d(TAG, "  - Title: $title")
+        Log.d(TAG, "  - Body: $body")
+        Log.d(TAG, "  - Sound: $soundUri")
+        Log.d(TAG, "  - Priority: $priority")
+        
+        // Create intent for AlarmReceiver
+        val intent = Intent(this, AlarmReceiver::class.java).apply {
+            putExtra("id", alarmId)
+            putExtra("title", title)
+            putExtra("body", body)
+            putExtra("sound", soundUri)
+            putExtra("priority", priority)
+        }
+        
+        val pendingIntent = PendingIntent.getBroadcast(
+            this,
+            alarmId,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        
+        try {
+            // Check if we can schedule exact alarms
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                if (!alarmManager.canScheduleExactAlarms()) {
+                    Log.w(TAG, "⚠️ Cannot schedule exact alarms. Requesting permission...")
+                    val permIntent = Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM)
+                    startActivity(permIntent)
+                    return
+                }
+            }
+            
+            // Schedule the alarm
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                alarmManager.setExactAndAllowWhileIdle(
+                    AlarmManager.RTC_WAKEUP,
+                    timeMillis,
+                    pendingIntent
+                )
+            } else {
+                alarmManager.setExact(
+                    AlarmManager.RTC_WAKEUP,
+                    timeMillis,
+                    pendingIntent
+                )
+            }
+            
+            Log.d(TAG, "✅ Native alarm scheduled successfully for ID: $alarmId")
+            
+        } catch (e: SecurityException) {
+            Log.e(TAG, "❌ SecurityException: ${e.message}")
+            Log.e(TAG, "   Please grant exact alarm permission in settings")
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ Error scheduling alarm: ${e.message}")
+            e.printStackTrace()
+        }
+    }
+    
+    private fun cancelNativeAlarm(alarmId: Int) {
+        try {
+            val alarmManager = getSystemService(Context.ALARM_SERVICE) as AlarmManager
+            val intent = Intent(this, AlarmReceiver::class.java)
+            val pendingIntent = PendingIntent.getBroadcast(
+                this,
+                alarmId,
+                intent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            
+            alarmManager.cancel(pendingIntent)
+            pendingIntent.cancel()
+            
+            Log.d(TAG, "✅ Native alarm cancelled for ID: $alarmId")
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ Error cancelling alarm: ${e.message}")
+        }
+    }
+    
+    companion object {
+        private const val TAG = "MainActivity"
     }
 }
