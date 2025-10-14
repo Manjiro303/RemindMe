@@ -4,6 +4,7 @@ import 'package:uuid/uuid.dart';
 import '../models/reminder_model.dart';
 import '../providers/reminder_provider.dart';
 import '../utils/constants.dart';
+import '../services/sound_picker_service.dart';
 
 class AddEditReminderScreen extends StatefulWidget {
   final String? reminderId;
@@ -18,11 +19,14 @@ class _AddEditReminderScreenState extends State<AddEditReminderScreen> {
   final _formKey = GlobalKey<FormState>();
   final _textController = TextEditingController();
   final _noteController = TextEditingController();
+  final SoundPickerService _soundPicker = SoundPickerService();
 
   TimeOfDay _selectedTime = const TimeOfDay(hour: 9, minute: 0);
   String _selectedCategory = 'Personal';
   String _selectedPriority = 'Medium';
   List<int> _selectedDays = List.generate(7, (index) => index);
+  String _selectedRingtone = 'Default Alarm';
+  String? _customSoundPath;
 
   bool get _isEditing => widget.reminderId != null;
 
@@ -46,6 +50,8 @@ class _AddEditReminderScreenState extends State<AddEditReminderScreen> {
     _selectedCategory = reminder.category;
     _selectedPriority = reminder.priority;
     _selectedDays = List.from(reminder.days);
+    _selectedRingtone = reminder.ringtone;
+    _customSoundPath = reminder.customSoundPath;
   }
 
   @override
@@ -69,6 +75,8 @@ class _AddEditReminderScreenState extends State<AddEditReminderScreen> {
             _buildTimeSection(),
             const SizedBox(height: 20),
             _buildDaysSection(),
+            const SizedBox(height: 20),
+            _buildSoundSection(),
             const SizedBox(height: 20),
             _buildNoteField(),
             const SizedBox(height: 30),
@@ -267,6 +275,28 @@ class _AddEditReminderScreenState extends State<AddEditReminderScreen> {
     );
   }
 
+  Widget _buildSoundSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          '🎵 Alarm Sound',
+          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(height: 12),
+        Card(
+          child: ListTile(
+            leading: const Icon(Icons.music_note),
+            title: const Text('Select Alarm Sound'),
+            subtitle: Text(_soundPicker.getDisplayName(_customSoundPath)),
+            trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+            onTap: _selectSound,
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildNoteField() {
     return TextFormField(
       controller: _noteController,
@@ -319,6 +349,47 @@ class _AddEditReminderScreenState extends State<AddEditReminderScreen> {
     }
   }
 
+  Future<void> _selectSound() async {
+    final String? selectedOption = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('🎵 Select Alarm Sound'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: SoundPickerService.soundOptions.map((option) {
+            return ListTile(
+              title: Text(option),
+              leading: Radio<String>(
+                value: option,
+                groupValue: _selectedRingtone,
+                onChanged: (value) {
+                  Navigator.pop(context, value);
+                },
+              ),
+              onTap: () => Navigator.pop(context, option),
+            );
+          }).toList(),
+        ),
+      ),
+    );
+
+    if (selectedOption != null) {
+      final soundPath = await _soundPicker.pickSound(selectedOption);
+      if (soundPath != null) {
+        setState(() {
+          _selectedRingtone = selectedOption;
+          _customSoundPath = soundPath;
+        });
+        
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('🎵 Sound selected: ${_soundPicker.getDisplayName(soundPath)}')),
+          );
+        }
+      }
+    }
+  }
+
   void _saveReminder() {
     if (!_formKey.currentState!.validate()) {
       return;
@@ -342,6 +413,8 @@ class _AddEditReminderScreenState extends State<AddEditReminderScreen> {
       note: _noteController.text.trim(),
       days: _selectedDays,
       enabled: true,
+      ringtone: _selectedRingtone,
+      customSoundPath: _customSoundPath,
     );
 
     if (_isEditing) {
