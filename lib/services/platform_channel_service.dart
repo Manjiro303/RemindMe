@@ -48,8 +48,19 @@ class PlatformChannelService {
   Future<void> cancelNativeAlarm(int alarmId) async {
     try {
       await platform.invokeMethod('cancelAlarm', {'alarmId': alarmId});
+      print('✅ Native alarm cancelled for ID: $alarmId');
     } catch (e) {
       print('❌ Error cancelling native alarm: $e');
+    }
+  }
+
+  // NEW METHOD: Cancel notification
+  Future<void> cancelNotification(int notificationId) async {
+    try {
+      await platform.invokeMethod('cancelNotification', {'notificationId': notificationId});
+      print('✅ Notification cancelled for ID: $notificationId');
+    } catch (e) {
+      print('❌ Error cancelling notification: $e');
     }
   }
 
