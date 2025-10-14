@@ -20,7 +20,6 @@ class ReminderCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final categoryColor = AppConstants.getCategoryColors()[reminder.category]!;
-    final priorityColor = AppConstants.getPriorityColors()[reminder.priority]!;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
