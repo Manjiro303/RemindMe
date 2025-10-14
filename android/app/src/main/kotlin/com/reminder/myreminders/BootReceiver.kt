@@ -4,23 +4,25 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.util.Log
+import android.app.AlarmManager
+import android.app.PendingIntent
+import android.os.Build
 
 class BootReceiver : BroadcastReceiver() {
     
     override fun onReceive(context: Context, intent: Intent) {
-        if (intent.action == Intent.ACTION_BOOT_COMPLETED ||
-            intent.action == "android.intent.action.QUICKBOOT_POWERON") {
+        val action = intent.action
+        if (action == Intent.ACTION_BOOT_COMPLETED ||
+            action == Intent.ACTION_LOCKED_BOOT_COMPLETED ||
+            action == "android.intent.action.QUICKBOOT_POWERON") {
             
-            Log.d(TAG, "Device booted - launching app to reschedule alarms")
+            Log.d(TAG, "📱 Device booted - Will reschedule alarms when app opens")
             
-            val launchIntent = context.packageManager.getLaunchIntentForPackage(context.packageName)
-            launchIntent?.apply {
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                putExtra("reschedule_alarms", true)
-                context.startActivity(this)
-            }
+            // Set a flag in SharedPreferences to reschedule on next app open
+            val prefs = context.getSharedPreferences("alarm_prefs", Context.MODE_PRIVATE)
+            prefs.edit().putBoolean("needs_reschedule", true).apply()
             
-            Log.d(TAG, "App launched for alarm rescheduling")
+            Log.d(TAG, "✅ Reschedule flag set")
         }
     }
     
