@@ -9,7 +9,7 @@ on:
 
 jobs:
   build-android:
-    name: Build Android APK
+    name: Build Universal Android APK
     runs-on: ubuntu-latest
     
     steps:
@@ -64,26 +64,14 @@ jobs:
         run: flutter analyze
         continue-on-error: true
 
-      # REMOVED: Run Tests step (no test directory)
+      - name: 🏗️ Build Universal Release APK
+        run: flutter build apk --release
 
-      - name: 🏗️ Build Debug APK
-        run: flutter build apk --debug
-
-      - name: 🏗️ Build Release APK
-        run: flutter build apk --release --split-per-abi
-
-      - name: 📤 Upload Debug APK
+      - name: 📤 Upload Universal APK
         uses: actions/upload-artifact@v4
         with:
-          name: debug-apk
-          path: build/app/outputs/flutter-apk/app-debug.apk
-          if-no-files-found: error
-
-      - name: 📤 Upload Release APKs
-        uses: actions/upload-artifact@v4
-        with:
-          name: release-apks
-          path: build/app/outputs/flutter-apk/app-*-release.apk
+          name: universal-release-apk
+          path: build/app/outputs/flutter-apk/app-release.apk
           if-no-files-found: error
 
       - name: 📊 Build Summary
@@ -91,16 +79,17 @@ jobs:
         run: |
           echo "### 🎉 Build Successful!" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**APK Files Generated:**" >> $GITHUB_STEP_SUMMARY
-          echo "- Debug APK: ✅" >> $GITHUB_STEP_SUMMARY
-          echo "- Release APKs (split per ABI): ✅" >> $GITHUB_STEP_SUMMARY
+          echo "**Universal APK Generated:**" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Works on ALL Android devices (ARM32, ARM64, x86, x86_64)" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Single file - no need to choose architecture" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Ready to install on any phone" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "📥 Download artifacts from the Actions tab!" >> $GITHUB_STEP_SUMMARY
+          echo "📥 Download 'universal-release-apk' from the Actions tab!" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           ls -lh build/app/outputs/flutter-apk/ >> $GITHUB_STEP_SUMMARY
 
   build-appbundle:
-    name: Build Android App Bundle
+    name: Build App Bundle (Play Store)
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
     
@@ -167,39 +156,3 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "Ready for Google Play Store upload" >> $GITHUB_STEP_SUMMARY
           ls -lh build/app/outputs/bundle/release/ >> $GITHUB_STEP_SUMMARY
-
-  lint-and-format:
-    name: Code Quality Check
-    runs-on: ubuntu-latest
-    
-    steps:
-      - name: 📥 Checkout Repository
-        uses: actions/checkout@v4
-
-      - name: 🐦 Setup Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          flutter-version: '3.24.0'
-          channel: 'stable'
-          cache: true
-
-      - name: 🔧 Configure Flutter
-        run: flutter config --no-analytics
-
-      - name: 📦 Get Dependencies
-        run: flutter pub get
-
-      - name: 🔍 Run Flutter Analyze
-        run: flutter analyze
-        continue-on-error: true
-
-      - name: ✨ Check Formatting
-        run: dart format --set-exit-if-changed .
-        continue-on-error: true
-
-      - name: 📊 Code Quality Summary
-        run: |
-          echo "### 📊 Code Quality Check Complete" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "✅ Static analysis completed" >> $GITHUB_STEP_SUMMARY
-          echo "✅ Code formatting checked" >> $GITHUB_STEP_SUMMARY
