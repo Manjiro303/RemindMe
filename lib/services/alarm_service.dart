@@ -1,16 +1,16 @@
-import 'package:android_alarm_manager_plus/android_alarm_manager_plus.dart';
 import 'package:flutter/material.dart';
+import 'package:android_alarm_manager_plus/android_alarm_manager_plus.dart';
 import '../models/reminder_model.dart';
-import 'notification_service.dart';
 import 'storage_service.dart';
+import 'platform_channel_service.dart';
 
 class AlarmService {
   static final AlarmService _instance = AlarmService._internal();
   factory AlarmService() => _instance;
   AlarmService._internal();
 
-  final NotificationService _notificationService = NotificationService();
   final StorageService _storageService = StorageService();
+  final PlatformChannelService _platformService = PlatformChannelService();
 
   // Schedule alarm for a reminder
   Future<bool> scheduleAlarm(ReminderModel reminder) async {
@@ -18,29 +18,33 @@ class AlarmService {
       final DateTime now = DateTime.now();
       DateTime scheduledTime = _getNextAlarmTime(reminder, now);
 
-      final int alarmId = reminder.id.hashCode;
+      // Use unique ID for each reminder
+      final int alarmId = reminder.id.hashCode.abs() % 2147483647;
 
-      await AndroidAlarmManager.oneShotAt(
-        scheduledTime,
-        alarmId,
-        _alarmCallback,
-        exact: true,
-        wakeup: true,
-        rescheduleOnReboot: true,
-        params: {
-          'id': reminder.id,
-          'text': reminder.text,
-          'category': reminder.category,
-          'priority': reminder.priority,
-          'note': reminder.note,
-          'days': reminder.days,
-          'hour': reminder.time.hour,
-          'minute': reminder.time.minute,
-        },
+      print('📅 Scheduling alarm for: ${reminder.text}');
+      print('⏰ Scheduled time: $scheduledTime');
+      print('🆔 Alarm ID: $alarmId');
+
+      // Cancel any existing alarm first
+      await cancelAlarm(reminder.id);
+
+      // Schedule alarm using native AlarmManager
+      final success = await _platformService.scheduleNativeAlarm(
+        alarmId: alarmId,
+        scheduledTime: scheduledTime,
+        title: reminder.category,
+        body: reminder.text,
+        soundUri: reminder.customSoundPath ?? '',
+        priority: reminder.priority,
       );
 
-      print('✅ Alarm scheduled for ${reminder.text} at $scheduledTime');
-      return true;
+      if (success) {
+        print('✅ Alarm scheduled successfully');
+        return true;
+      } else {
+        print('❌ Failed to schedule alarm');
+        return false;
+      }
     } catch (e) {
       print('❌ Error scheduling alarm: $e');
       return false;
@@ -58,13 +62,15 @@ class AlarmService {
     );
 
     // If time has passed today, start from tomorrow
-    if (scheduledTime.isBefore(now)) {
+    if (scheduledTime.isBefore(now) || scheduledTime.difference(now).inSeconds < 60) {
       scheduledTime = scheduledTime.add(const Duration(days: 1));
     }
 
     // Find next valid day
-    while (!reminder.days.contains(scheduledTime.weekday - 1)) {
+    int attempts = 0;
+    while (!reminder.days.contains(scheduledTime.weekday - 1) && attempts < 7) {
       scheduledTime = scheduledTime.add(const Duration(days: 1));
+      attempts++;
     }
 
     return scheduledTime;
@@ -73,8 +79,8 @@ class AlarmService {
   // Cancel alarm
   Future<void> cancelAlarm(String reminderId) async {
     try {
-      final int alarmId = reminderId.hashCode;
-      await AndroidAlarmManager.cancel(alarmId);
+      final int alarmId = reminderId.hashCode.abs() % 2147483647;
+      await _platformService.cancelNativeAlarm(alarmId);
       print('✅ Alarm cancelled for ID: $reminderId');
     } catch (e) {
       print('❌ Error cancelling alarm: $e');
@@ -87,60 +93,19 @@ class AlarmService {
       final reminders = await _storageService.loadReminders();
       int count = 0;
 
+      print('📋 Found ${reminders.length} total reminders');
+
       for (var reminder in reminders) {
         if (reminder.enabled) {
           final success = await scheduleAlarm(reminder);
           if (success) count++;
+          await Future.delayed(const Duration(milliseconds: 200));
         }
       }
 
-      print('✅ Rescheduled $count alarms');
+      print('✅ Rescheduled $count alarms successfully');
     } catch (e) {
       print('❌ Error rescheduling alarms: $e');
-    }
-  }
-
-  // Alarm callback - must be top-level or static
-  @pragma('vm:entry-point')
-  static Future<void> _alarmCallback(int alarmId, Map<String, dynamic> params) async {
-    print('🔔 Alarm triggered: ${params['text']}');
-
-    final notificationService = NotificationService();
-    await notificationService.initialize();
-
-    await notificationService.showNotification(
-      id: alarmId,
-      title: params['category'] ?? 'Reminder',
-      body: params['text'] ?? 'Reminder',
-      category: params['category'] ?? 'Personal',
-      priority: params['priority'] ?? 'Medium',
-      payload: params['id'],
-    );
-
-    // Reschedule if recurring
-    if (params['days'] != null && (params['days'] as List).isNotEmpty) {
-      await _rescheduleRecurringAlarm(params);
-    }
-  }
-
-  @pragma('vm:entry-point')
-  static Future<void> _rescheduleRecurringAlarm(Map<String, dynamic> params) async {
-    try {
-      final storageService = StorageService();
-      final reminders = await storageService.loadReminders();
-      
-      final reminder = reminders.firstWhere(
-        (r) => r.id == params['id'],
-        orElse: () => throw Exception('Reminder not found'),
-      );
-
-      if (reminder.enabled) {
-        final alarmService = AlarmService();
-        await alarmService.scheduleAlarm(reminder);
-        print('✅ Recurring alarm rescheduled');
-      }
-    } catch (e) {
-      print('❌ Error rescheduling recurring alarm: $e');
     }
   }
 }
