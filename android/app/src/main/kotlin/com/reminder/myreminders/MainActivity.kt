@@ -12,6 +12,7 @@ import android.media.RingtoneManager
 import android.net.Uri
 import android.util.Log
 import android.app.PendingIntent
+import android.app.NotificationManager
 
 class MainActivity: FlutterActivity() {
     private val CHANNEL = "com.reminder.myreminders/permissions"
@@ -96,6 +97,16 @@ class MainActivity: FlutterActivity() {
                         result.error("CANCEL_ERROR", e.message, null)
                     }
                 }
+                "cancelNotification" -> {
+                    try {
+                        val notificationId = call.argument<Int>("notificationId") ?: 0
+                        cancelNotification(notificationId)
+                        result.success(true)
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error in cancelNotification: ${e.message}")
+                        result.error("CANCEL_NOTIF_ERROR", e.message, null)
+                    }
+                }
                 else -> result.notImplemented()
             }
         }
@@ -161,6 +172,10 @@ class MainActivity: FlutterActivity() {
         Log.d(TAG, "  - Body: $body")
         Log.d(TAG, "  - Sound: $soundUri")
         Log.d(TAG, "  - Priority: $priority")
+        
+        // CRITICAL FIX: Cancel existing alarm first
+        cancelNativeAlarm(alarmId)
+        cancelNotification(alarmId)
         
         // Create intent for AlarmReceiver
         val intent = Intent(this, AlarmReceiver::class.java).apply {
@@ -232,6 +247,17 @@ class MainActivity: FlutterActivity() {
             Log.d(TAG, "✅ Native alarm cancelled for ID: $alarmId")
         } catch (e: Exception) {
             Log.e(TAG, "❌ Error cancelling alarm: ${e.message}")
+        }
+    }
+    
+    // NEW METHOD: Cancel notification
+    private fun cancelNotification(notificationId: Int) {
+        try {
+            val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            notificationManager.cancel(notificationId)
+            Log.d(TAG, "✅ Notification cancelled for ID: $notificationId")
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ Error cancelling notification: ${e.message}")
         }
     }
     
