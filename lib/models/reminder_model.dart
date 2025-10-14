@@ -10,6 +10,7 @@ class ReminderModel {
   List<int> days;
   bool enabled;
   String ringtone;
+  String? customSoundPath;
 
   ReminderModel({
     required this.id,
@@ -20,7 +21,8 @@ class ReminderModel {
     this.note = '',
     List<int>? days,
     this.enabled = true,
-    this.ringtone = 'System Alarm',
+    this.ringtone = 'Default Alarm',
+    this.customSoundPath,
   }) : days = days ?? List.generate(7, (index) => index);
 
   Map<String, dynamic> toJson() {
@@ -34,6 +36,7 @@ class ReminderModel {
       'days': days,
       'enabled': enabled,
       'ringtone': ringtone,
+      'customSoundPath': customSoundPath,
     };
   }
 
@@ -51,7 +54,8 @@ class ReminderModel {
       note: json['note'] ?? '',
       days: List<int>.from(json['days'] ?? List.generate(7, (index) => index)),
       enabled: json['enabled'] ?? true,
-      ringtone: json['ringtone'] ?? 'System Alarm',
+      ringtone: json['ringtone'] ?? 'Default Alarm',
+      customSoundPath: json['customSoundPath'],
     );
   }
 
@@ -65,6 +69,7 @@ class ReminderModel {
     List<int>? days,
     bool? enabled,
     String? ringtone,
+    String? customSoundPath,
   }) {
     return ReminderModel(
       id: id ?? this.id,
@@ -76,6 +81,7 @@ class ReminderModel {
       days: days ?? this.days,
       enabled: enabled ?? this.enabled,
       ringtone: ringtone ?? this.ringtone,
+      customSoundPath: customSoundPath ?? this.customSoundPath,
     );
   }
 }
