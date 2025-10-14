@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:android_alarm_manager_plus/android_alarm_manager_plus.dart';
 import '../models/reminder_model.dart';
 import 'storage_service.dart';
 import 'platform_channel_service.dart';
