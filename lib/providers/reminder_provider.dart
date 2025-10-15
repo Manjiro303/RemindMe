@@ -46,18 +46,14 @@ class ReminderProvider with ChangeNotifier {
   Future<void> updateReminder(String id, ReminderModel updatedReminder) async {
     final index = _reminders.indexWhere((r) => r.id == id);
     if (index != -1) {
-      // CRITICAL FIX: Cancel old alarm first and wait
       await _alarmService.cancelAlarm(id);
       await Future.delayed(const Duration(milliseconds: 500));
       
-      // Update the reminder
       _reminders[index] = updatedReminder;
       
-      // Save to storage
       await _storageService.saveReminders(_reminders);
       _sortReminders();
       
-      // Schedule new alarm if enabled
       if (updatedReminder.enabled) {
         await _alarmService.scheduleAlarm(updatedReminder);
       }
