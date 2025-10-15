@@ -35,12 +35,16 @@
         <receiver 
             android:name=".AlarmReceiver"
             android:enabled="true"
-            android:exported="false"/>
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.reminder.myreminders.STOP_RINGTONE"/>
+            </intent-filter>
+        </receiver>
 
         <activity
             android:name=".MainActivity"
             android:exported="true"
-            android:launchMode="singleTask"
+            android:launchMode="singleTop"
             android:theme="@style/LaunchTheme"
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
             android:hardwareAccelerated="true"
