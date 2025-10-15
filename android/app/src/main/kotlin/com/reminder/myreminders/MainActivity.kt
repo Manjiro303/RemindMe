@@ -24,7 +24,6 @@ class MainActivity: FlutterActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         
-        // ==================== PERMISSION CHANNEL ====================
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler { call, result ->
             when (call.method) {
                 "openSettings" -> {
@@ -50,7 +49,6 @@ class MainActivity: FlutterActivity() {
             }
         }
         
-        // ==================== RINGTONE CHANNEL ====================
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, RINGTONE_CHANNEL).setMethodCallHandler { call, result ->
             when (call.method) {
                 "pickRingtone" -> {
@@ -69,7 +67,6 @@ class MainActivity: FlutterActivity() {
             }
         }
         
-        // ==================== ALARM CHANNEL ====================
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, ALARM_CHANNEL).setMethodCallHandler { call, result ->
             when (call.method) {
                 "scheduleAlarm" -> {
@@ -115,20 +112,17 @@ class MainActivity: FlutterActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        // Stop any playing ringtones when app opens
         stopAllRingtones()
     }
 
     override fun onResume() {
         super.onResume()
-        // Stop ringtones when app comes to foreground
         stopAllRingtones()
     }
 
     private fun stopAllRingtones() {
         try {
             val audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
-            // This will stop all media playback including ringtones
             val intent = Intent("com.reminder.myreminders.STOP_RINGTONE")
             sendBroadcast(intent)
             Log.d(TAG, "🔇 Stopped all ringtones")
@@ -137,7 +131,6 @@ class MainActivity: FlutterActivity() {
         }
     }
 
-    // ==================== SETTINGS ====================
     private fun openAppSettings() {
         val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
             data = Uri.parse("package:$packageName")
@@ -145,7 +138,6 @@ class MainActivity: FlutterActivity() {
         startActivity(intent)
     }
     
-    // ==================== RINGTONE PICKER ====================
     private fun pickRingtone() {
         val intent = Intent(RingtoneManager.ACTION_RINGTONE_PICKER).apply {
             putExtra(RingtoneManager.EXTRA_RINGTONE_TYPE, RingtoneManager.TYPE_ALARM)
@@ -166,7 +158,6 @@ class MainActivity: FlutterActivity() {
             if (uri != null) {
                 Log.d(TAG, "Selected ringtone: $uri")
                 
-                // Send result back to Flutter
                 flutterEngine?.dartExecutor?.binaryMessenger?.let { messenger ->
                     MethodChannel(messenger, RINGTONE_CHANNEL).invokeMethod(
                         "onRingtonePicked",
@@ -179,7 +170,6 @@ class MainActivity: FlutterActivity() {
         }
     }
     
-    // ==================== NATIVE ALARM SCHEDULING ====================
     private fun scheduleNativeAlarm(
         alarmId: Int,
         timeMillis: Long,
@@ -198,11 +188,9 @@ class MainActivity: FlutterActivity() {
         Log.d(TAG, "  - Sound: $soundUri")
         Log.d(TAG, "  - Priority: $priority")
         
-        // CRITICAL FIX: Cancel existing alarm first
         cancelNativeAlarm(alarmId)
         cancelNotification(alarmId)
         
-        // Create intent for AlarmReceiver
         val intent = Intent(this, AlarmReceiver::class.java).apply {
             putExtra("id", alarmId)
             putExtra("title", title)
@@ -219,7 +207,6 @@ class MainActivity: FlutterActivity() {
         )
         
         try {
-            // Check if we can schedule exact alarms
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 if (!alarmManager.canScheduleExactAlarms()) {
                     Log.w(TAG, "⚠️ Cannot schedule exact alarms. Requesting permission...")
@@ -229,7 +216,6 @@ class MainActivity: FlutterActivity() {
                 }
             }
             
-            // Schedule the alarm
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                 alarmManager.setExactAndAllowWhileIdle(
                     AlarmManager.RTC_WAKEUP,
