@@ -27,7 +27,6 @@ class AlarmReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         Log.d(TAG, "🔔 ========== ALARM RECEIVED ==========")
         
-        // Handle dismiss action
         if (intent.action == "DISMISS_ALARM") {
             val notificationId = intent.getIntExtra("notification_id", 0)
             stopRingtone()
@@ -37,7 +36,6 @@ class AlarmReceiver : BroadcastReceiver() {
             return
         }
         
-        // Wake up the device
         val powerManager = context.getSystemService(Context.POWER_SERVICE) as PowerManager
         val wakeLock = powerManager.newWakeLock(
             PowerManager.PARTIAL_WAKE_LOCK or 
@@ -45,7 +43,7 @@ class AlarmReceiver : BroadcastReceiver() {
             PowerManager.ON_AFTER_RELEASE,
             "RemindMe::AlarmWakeLock"
         )
-        wakeLock.acquire(60000) // 60 seconds
+        wakeLock.acquire(60000)
         
         try {
             val title = intent.getStringExtra("title") ?: "Reminder"
@@ -60,13 +58,8 @@ class AlarmReceiver : BroadcastReceiver() {
             Log.d(TAG, "Sound URI: $soundUri")
             Log.d(TAG, "Priority: $priority")
             
-            // Play custom ringtone
             playRingtone(context, soundUri)
-            
-            // Vibrate
             vibrateDevice(context)
-            
-            // Show notification
             showNotification(context, id, title, body, soundUri, priority)
             
             Log.d(TAG, "✅ Alarm processing complete")
@@ -82,7 +75,6 @@ class AlarmReceiver : BroadcastReceiver() {
     
     private fun playRingtone(context: Context, soundUri: String?) {
         try {
-            // Stop any currently playing ringtone
             stopRingtone()
             
             val uri: Uri = when {
@@ -130,7 +122,7 @@ class AlarmReceiver : BroadcastReceiver() {
                 vibrator.vibrate(
                     VibrationEffect.createWaveform(
                         longArrayOf(0, 500, 200, 500, 200, 500, 200, 500),
-                        0 // Repeat from index 0 (loop)
+                        0
                     )
                 )
             } else {
@@ -156,13 +148,12 @@ class AlarmReceiver : BroadcastReceiver() {
         
         Log.d(TAG, "📱 Creating notification channel...")
         
-        // Create notification channel (SILENT - we handle sound manually)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val importance = NotificationManager.IMPORTANCE_HIGH
             val channel = NotificationChannel(channelId, "Alarm Notifications", importance).apply {
                 description = "High priority notifications for alarms"
-                enableVibration(false) // We handle vibration manually
-                setSound(null, null) // SILENT - we play sound manually
+                enableVibration(false)
+                setSound(null, null)
                 enableLights(true)
                 lightColor = android.graphics.Color.BLUE
                 setShowBadge(true)
@@ -173,7 +164,6 @@ class AlarmReceiver : BroadcastReceiver() {
             Log.d(TAG, "✅ Notification channel created (silent)")
         }
         
-        // Create intent to open app (DOES NOT DISMISS)
         val appIntent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
             putExtra("notification_id", id)
@@ -186,7 +176,6 @@ class AlarmReceiver : BroadcastReceiver() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         
-        // Create dismiss action (STOPS RINGTONE)
         val dismissIntent = Intent(context, AlarmReceiver::class.java).apply {
             action = "DISMISS_ALARM"
             putExtra("notification_id", id)
@@ -198,7 +187,6 @@ class AlarmReceiver : BroadcastReceiver() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         
-        // Build notification
         val notification = NotificationCompat.Builder(context, channelId)
             .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
             .setContentTitle("⏰ $title")
@@ -206,22 +194,21 @@ class AlarmReceiver : BroadcastReceiver() {
             .setStyle(NotificationCompat.BigTextStyle().bigText(body))
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setCategory(NotificationCompat.CATEGORY_ALARM)
-            .setAutoCancel(false) // Don't auto-dismiss
-            .setOngoing(true) // Keep it persistent
-            .setContentIntent(pendingIntent) // Open app on tap (doesn't dismiss)
+            .setAutoCancel(false)
+            .setOngoing(true)
+            .setContentIntent(pendingIntent)
             .setFullScreenIntent(pendingIntent, true)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-            .setSound(null) // No notification sound - we play manually
-            .setVibrate(null) // No notification vibration - we handle manually
+            .setSound(null)
+            .setVibrate(null)
             .addAction(
                 android.R.drawable.ic_menu_close_clear_cancel,
                 "Dismiss",
                 dismissPendingIntent
             )
-            .setDeleteIntent(dismissPendingIntent) // Stop sound when swiped away
+            .setDeleteIntent(dismissPendingIntent)
             .build()
         
-        // Show notification
         notification.flags = notification.flags or android.app.Notification.FLAG_INSISTENT
         notificationManager.notify(id, notification)
         
