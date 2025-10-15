@@ -13,6 +13,7 @@ import android.net.Uri
 import android.util.Log
 import android.app.PendingIntent
 import android.app.NotificationManager
+import android.media.AudioManager
 
 class MainActivity: FlutterActivity() {
     private val CHANNEL = "com.reminder.myreminders/permissions"
@@ -109,6 +110,30 @@ class MainActivity: FlutterActivity() {
                 }
                 else -> result.notImplemented()
             }
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        // Stop any playing ringtones when app opens
+        stopAllRingtones()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Stop ringtones when app comes to foreground
+        stopAllRingtones()
+    }
+
+    private fun stopAllRingtones() {
+        try {
+            val audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+            // This will stop all media playback including ringtones
+            val intent = Intent("com.reminder.myreminders.STOP_RINGTONE")
+            sendBroadcast(intent)
+            Log.d(TAG, "🔇 Stopped all ringtones")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error stopping ringtones: ${e.message}")
         }
     }
 
@@ -250,7 +275,6 @@ class MainActivity: FlutterActivity() {
         }
     }
     
-    // NEW METHOD: Cancel notification
     private fun cancelNotification(notificationId: Int) {
         try {
             val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
