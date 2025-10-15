@@ -11,6 +11,8 @@ class ReminderModel {
   bool enabled;
   String ringtone;
   String? customSoundPath;
+  DateTime? specificDate;
+  bool isRecurring;
 
   ReminderModel({
     required this.id,
@@ -23,6 +25,8 @@ class ReminderModel {
     this.enabled = true,
     this.ringtone = 'Default Alarm',
     this.customSoundPath,
+    this.specificDate,
+    this.isRecurring = true,
   }) : days = days ?? List.generate(7, (index) => index);
 
   Map<String, dynamic> toJson() {
@@ -37,6 +41,8 @@ class ReminderModel {
       'enabled': enabled,
       'ringtone': ringtone,
       'customSoundPath': customSoundPath,
+      'specificDate': specificDate?.toIso8601String(),
+      'isRecurring': isRecurring,
     };
   }
 
@@ -56,6 +62,10 @@ class ReminderModel {
       enabled: json['enabled'] ?? true,
       ringtone: json['ringtone'] ?? 'Default Alarm',
       customSoundPath: json['customSoundPath'],
+      specificDate: json['specificDate'] != null 
+          ? DateTime.parse(json['specificDate']) 
+          : null,
+      isRecurring: json['isRecurring'] ?? true,
     );
   }
 
@@ -70,6 +80,8 @@ class ReminderModel {
     bool? enabled,
     String? ringtone,
     String? customSoundPath,
+    DateTime? specificDate,
+    bool? isRecurring,
   }) {
     return ReminderModel(
       id: id ?? this.id,
@@ -82,6 +94,8 @@ class ReminderModel {
       enabled: enabled ?? this.enabled,
       ringtone: ringtone ?? this.ringtone,
       customSoundPath: customSoundPath ?? this.customSoundPath,
+      specificDate: specificDate ?? this.specificDate,
+      isRecurring: isRecurring ?? this.isRecurring,
     );
   }
 }
