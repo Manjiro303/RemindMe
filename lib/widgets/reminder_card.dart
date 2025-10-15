@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
+import 'package:intl/intl.dart';
 import '../models/reminder_model.dart';
 import '../utils/constants.dart';
 
@@ -97,13 +98,21 @@ class ReminderCard extends StatelessWidget {
                     const SizedBox(height: 12),
                     Row(
                       children: [
-                        const Icon(Icons.repeat, size: 16, color: Colors.grey),
+                        Icon(
+                          reminder.isRecurring ? Icons.repeat : Icons.event,
+                          size: 16,
+                          color: Colors.grey,
+                        ),
                         const SizedBox(width: 6),
-                        Text(
-                          _formatDays(reminder.days),
-                          style: const TextStyle(
-                            fontSize: 13,
-                            color: Colors.grey,
+                        Expanded(
+                          child: Text(
+                            reminder.isRecurring
+                                ? _formatDays(reminder.days)
+                                : _formatSpecificDate(reminder.specificDate),
+                            style: const TextStyle(
+                              fontSize: 13,
+                              color: Colors.grey,
+                            ),
                           ),
                         ),
                         if (reminder.note.isNotEmpty) ...[
@@ -158,5 +167,21 @@ class ReminderCard extends StatelessWidget {
     if (days.length == 5 && days.every((d) => d < 5)) return 'Weekdays';
     if (days.length == 2 && days[0] == 5 && days[1] == 6) return 'Weekend';
     return days.map((d) => AppConstants.dayNames[d]).join(' ');
+  }
+
+  String _formatSpecificDate(DateTime? date) {
+    if (date == null) return 'No date set';
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final tomorrow = today.add(const Duration(days: 1));
+    final dateOnly = DateTime(date.year, date.month, date.day);
+
+    if (dateOnly == today) {
+      return 'Today';
+    } else if (dateOnly == tomorrow) {
+      return 'Tomorrow';
+    } else {
+      return DateFormat('MMM dd, yyyy').format(date);
+    }
   }
 }
