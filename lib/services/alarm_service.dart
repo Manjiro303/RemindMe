@@ -10,24 +10,28 @@ class AlarmService {
   final StorageService _storageService = StorageService();
   final PlatformChannelService _platformService = PlatformChannelService();
 
-  // Schedule alarm for a reminder
   Future<bool> scheduleAlarm(ReminderModel reminder) async {
     try {
       final DateTime now = DateTime.now();
       DateTime scheduledTime = _getNextAlarmTime(reminder, now);
 
-      // Use unique ID for each reminder
       final int alarmId = reminder.id.hashCode.abs() % 2147483647;
 
       print('📅 Scheduling alarm for: ${reminder.text}');
+      print('⏰ Current time: $now');
       print('⏰ Scheduled time: $scheduledTime');
       print('🆔 Alarm ID: $alarmId');
+      print('🔄 Is recurring: ${reminder.isRecurring}');
+      print('📆 Specific date: ${reminder.specificDate}');
 
-      // CRITICAL FIX: Cancel existing alarm first and wait
+      if (scheduledTime.isBefore(now)) {
+        print('⚠️ Scheduled time is in the past! Skipping...');
+        return false;
+      }
+
       await cancelAlarm(reminder.id);
       await Future.delayed(const Duration(milliseconds: 500));
 
-      // Schedule alarm using native AlarmManager
       final success = await _platformService.scheduleNativeAlarm(
         alarmId: alarmId,
         scheduledTime: scheduledTime,
@@ -50,8 +54,20 @@ class AlarmService {
     }
   }
 
-  // Calculate next alarm time
   DateTime _getNextAlarmTime(ReminderModel reminder, DateTime now) {
+    if (!reminder.isRecurring && reminder.specificDate != null) {
+      DateTime scheduledTime = DateTime(
+        reminder.specificDate!.year,
+        reminder.specificDate!.month,
+        reminder.specificDate!.day,
+        reminder.time.hour,
+        reminder.time.minute,
+      );
+      
+      print('📆 One-time reminder for: $scheduledTime');
+      return scheduledTime;
+    }
+
     DateTime scheduledTime = DateTime(
       now.year,
       now.month,
@@ -60,30 +76,45 @@ class AlarmService {
       reminder.time.minute,
     );
 
-    // If time has passed today, start from tomorrow
-    if (scheduledTime.isBefore(now) || scheduledTime.difference(now).inSeconds < 60) {
+    print('🔍 Initial scheduled time: $scheduledTime');
+    print('🔍 Current time: $now');
+    print('🔍 Time difference: ${scheduledTime.difference(now).inSeconds} seconds');
+
+    if (scheduledTime.isBefore(now) || 
+        scheduledTime.difference(now).inSeconds < 120) {
+      print('⏭️ Time has passed or too close, moving to next occurrence');
       scheduledTime = scheduledTime.add(const Duration(days: 1));
     }
 
-    // Find next valid day
     int attempts = 0;
-    while (!reminder.days.contains(scheduledTime.weekday - 1) && attempts < 7) {
+    int currentWeekday = scheduledTime.weekday - 1;
+    
+    print('🔍 Looking for next valid day...');
+    print('🔍 Selected days: ${reminder.days}');
+    print('🔍 Starting from weekday: $currentWeekday');
+
+    while (!reminder.days.contains(currentWeekday) && attempts < 7) {
       scheduledTime = scheduledTime.add(const Duration(days: 1));
+      currentWeekday = scheduledTime.weekday - 1;
       attempts++;
+      print('🔍 Checking day $currentWeekday (attempt $attempts)');
     }
 
+    if (attempts >= 7) {
+      print('⚠️ No valid day found in next 7 days!');
+    } else {
+      print('✅ Found valid day: $currentWeekday');
+    }
+
+    print('🎯 Final scheduled time: $scheduledTime');
     return scheduledTime;
   }
 
-  // Cancel alarm - ENHANCED VERSION
   Future<void> cancelAlarm(String reminderId) async {
     try {
       final int alarmId = reminderId.hashCode.abs() % 2147483647;
       
-      // Cancel the native alarm
       await _platformService.cancelNativeAlarm(alarmId);
-      
-      // Also cancel any pending notifications
       await _platformService.cancelNotification(alarmId);
       
       print('✅ Alarm and notification cancelled for ID: $reminderId (alarm ID: $alarmId)');
@@ -92,7 +123,6 @@ class AlarmService {
     }
   }
 
-  // Reschedule all enabled alarms
   Future<void> rescheduleAllAlarms() async {
     try {
       final reminders = await _storageService.loadReminders();
@@ -100,15 +130,12 @@ class AlarmService {
 
       print('📋 Found ${reminders.length} total reminders');
 
-      // First, cancel all existing alarms
       for (var reminder in reminders) {
         await cancelAlarm(reminder.id);
       }
       
-      // Wait a bit to ensure cancellations are processed
       await Future.delayed(const Duration(seconds: 1));
 
-      // Then reschedule enabled ones
       for (var reminder in reminders) {
         if (reminder.enabled) {
           final success = await scheduleAlarm(reminder);
