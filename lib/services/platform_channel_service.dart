@@ -54,7 +54,6 @@ class PlatformChannelService {
     }
   }
 
-  // NEW METHOD: Cancel notification
   Future<void> cancelNotification(int notificationId) async {
     try {
       await platform.invokeMethod('cancelNotification', {'notificationId': notificationId});
