@@ -17,21 +17,27 @@ class AlarmService {
 
       final int alarmId = reminder.id.hashCode.abs() % 2147483647;
 
-      print('📅 Scheduling alarm for: ${reminder.text}');
+      print('📅 ============ SCHEDULING ALARM ============');
+      print('📅 Alarm for: ${reminder.text}');
       print('⏰ Current time: $now');
       print('⏰ Scheduled time: $scheduledTime');
+      print('⏰ Time until alarm: ${scheduledTime.difference(now).inMinutes} minutes');
       print('🆔 Alarm ID: $alarmId');
       print('🔄 Is recurring: ${reminder.isRecurring}');
       print('📆 Specific date: ${reminder.specificDate}');
+      print('📆 Selected days: ${reminder.days}');
 
+      // Check if time is in the past
       if (scheduledTime.isBefore(now)) {
-        print('⚠️ Scheduled time is in the past! Skipping...');
+        print('❌ ERROR: Scheduled time is in the past!');
         return false;
       }
 
+      // Cancel existing alarm
       await cancelAlarm(reminder.id);
       await Future.delayed(const Duration(milliseconds: 500));
 
+      // Schedule the alarm
       final success = await _platformService.scheduleNativeAlarm(
         alarmId: alarmId,
         scheduledTime: scheduledTime,
@@ -42,7 +48,9 @@ class AlarmService {
       );
 
       if (success) {
-        print('✅ Alarm scheduled successfully');
+        print('✅ Alarm scheduled successfully!');
+        print('✅ Will ring in ${scheduledTime.difference(now).inMinutes} minutes');
+        print('============================================');
         return true;
       } else {
         print('❌ Failed to schedule alarm');
@@ -55,6 +63,7 @@ class AlarmService {
   }
 
   DateTime _getNextAlarmTime(ReminderModel reminder, DateTime now) {
+    // For one-time reminders with specific date
     if (!reminder.isRecurring && reminder.specificDate != null) {
       DateTime scheduledTime = DateTime(
         reminder.specificDate!.year,
@@ -62,52 +71,63 @@ class AlarmService {
         reminder.specificDate!.day,
         reminder.time.hour,
         reminder.time.minute,
+        0,
+        0,
       );
       
-      print('📆 One-time reminder for: $scheduledTime');
+      print('📆 One-time reminder calculated: $scheduledTime');
       return scheduledTime;
     }
 
+    // For recurring reminders
     DateTime scheduledTime = DateTime(
       now.year,
       now.month,
       now.day,
       reminder.time.hour,
       reminder.time.minute,
+      0,
+      0,
     );
 
-    print('🔍 Initial scheduled time: $scheduledTime');
-    print('🔍 Current time: $now');
-    print('🔍 Time difference: ${scheduledTime.difference(now).inSeconds} seconds');
+    print('🔍 Initial time today: $scheduledTime');
+    
+    final secondsUntil = scheduledTime.difference(now).inSeconds;
+    print('🔍 Seconds until alarm: $secondsUntil');
 
-    if (scheduledTime.isBefore(now) || 
-        scheduledTime.difference(now).inSeconds < 120) {
-      print('⏭️ Time has passed or too close, moving to next occurrence');
+    // If time has passed OR less than 30 seconds away, move to next day
+    if (scheduledTime.isBefore(now) || secondsUntil < 30) {
+      print('⏭️ Moving to next day (time passed or too close)');
       scheduledTime = scheduledTime.add(const Duration(days: 1));
     }
 
+    // Find next valid day for recurring reminders
     int attempts = 0;
-    int currentWeekday = scheduledTime.weekday - 1;
+    int currentWeekday = scheduledTime.weekday - 1; // 0 = Monday
     
-    print('🔍 Looking for next valid day...');
     print('🔍 Selected days: ${reminder.days}');
-    print('🔍 Starting from weekday: $currentWeekday');
+    print('🔍 Current weekday: $currentWeekday (${_getDayName(currentWeekday)})');
 
     while (!reminder.days.contains(currentWeekday) && attempts < 7) {
+      print('⏭️ Day $currentWeekday not selected, moving forward');
       scheduledTime = scheduledTime.add(const Duration(days: 1));
       currentWeekday = scheduledTime.weekday - 1;
       attempts++;
-      print('🔍 Checking day $currentWeekday (attempt $attempts)');
     }
 
     if (attempts >= 7) {
-      print('⚠️ No valid day found in next 7 days!');
+      print('❌ No valid day found!');
     } else {
-      print('✅ Found valid day: $currentWeekday');
+      print('✅ Valid day found: $currentWeekday (${_getDayName(currentWeekday)})');
     }
 
-    print('🎯 Final scheduled time: $scheduledTime');
+    print('🎯 Final time: $scheduledTime');
     return scheduledTime;
+  }
+
+  String _getDayName(int weekday) {
+    const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    return days[weekday];
   }
 
   Future<void> cancelAlarm(String reminderId) async {
@@ -117,36 +137,42 @@ class AlarmService {
       await _platformService.cancelNativeAlarm(alarmId);
       await _platformService.cancelNotification(alarmId);
       
-      print('✅ Alarm and notification cancelled for ID: $reminderId (alarm ID: $alarmId)');
+      print('✅ Cancelled alarm ID: $reminderId (native ID: $alarmId)');
     } catch (e) {
-      print('❌ Error cancelling alarm: $e');
+      print('❌ Error cancelling: $e');
     }
   }
 
   Future<void> rescheduleAllAlarms() async {
     try {
       final reminders = await _storageService.loadReminders();
-      int count = 0;
+      
+      print('📋 ========== RESCHEDULING ALL ALARMS ==========');
+      print('📋 Total reminders: ${reminders.length}');
 
-      print('📋 Found ${reminders.length} total reminders');
-
+      // Cancel all first
       for (var reminder in reminders) {
         await cancelAlarm(reminder.id);
       }
       
       await Future.delayed(const Duration(seconds: 1));
 
+      // Reschedule enabled ones
+      int count = 0;
       for (var reminder in reminders) {
         if (reminder.enabled) {
+          print('\n🔄 Scheduling: ${reminder.text}');
           final success = await scheduleAlarm(reminder);
           if (success) count++;
           await Future.delayed(const Duration(milliseconds: 300));
         }
       }
 
-      print('✅ Rescheduled $count alarms successfully');
+      print('\n✅ ========== RESCHEDULE COMPLETE ==========');
+      print('✅ Rescheduled $count alarms');
+      print('============================================\n');
     } catch (e) {
-      print('❌ Error rescheduling alarms: $e');
+      print('❌ Reschedule error: $e');
     }
   }
 }
