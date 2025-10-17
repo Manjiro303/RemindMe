@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import '../models/reminder_model.dart';
 import '../utils/constants.dart';
 import 'captcha_screen.dart';
