@@ -112,12 +112,20 @@ class MainActivity: FlutterActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        stopAllRingtones()
+        Log.d(TAG, "🔔 onNewIntent called with action: ${intent.action}")
+        
+        // Only stop ringtone if action is DISMISS_ALARM
+        if (intent.action == "DISMISS_ALARM") {
+            stopAllRingtones()
+        } else {
+            // For opening app from notification, just open the alarm detail screen
+            Log.d(TAG, "Opening app from notification")
+        }
     }
 
     override fun onResume() {
         super.onResume()
-        stopAllRingtones()
+        Log.d(TAG, "onResume called")
     }
 
     private fun stopAllRingtones() {
