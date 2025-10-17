@@ -13,7 +13,6 @@ import android.net.Uri
 import android.util.Log
 import android.app.PendingIntent
 import android.app.NotificationManager
-import android.media.AudioManager
 
 class MainActivity: FlutterActivity() {
     private val CHANNEL = "com.reminder.myreminders/permissions"
@@ -99,11 +98,20 @@ class MainActivity: FlutterActivity() {
                 "cancelNotification" -> {
                     try {
                         val notificationId = call.argument<Int>("notificationId") ?: 0
-                        cancelNotification(notificationId)
+                        stopRingtoneAndNotification(notificationId)
                         result.success(true)
                     } catch (e: Exception) {
                         Log.e(TAG, "Error in cancelNotification: ${e.message}")
                         result.error("CANCEL_NOTIF_ERROR", e.message, null)
+                    }
+                }
+                "stopRingtone" -> {
+                    try {
+                        AlarmReceiver.stopCurrentRingtone()
+                        result.success(true)
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error in stopRingtone: ${e.message}")
+                        result.error("STOP_RINGTONE_ERROR", e.message, null)
                     }
                 }
                 else -> result.notImplemented()
@@ -278,6 +286,21 @@ class MainActivity: FlutterActivity() {
             Log.d(TAG, "✅ Native alarm cancelled for ID: $alarmId")
         } catch (e: Exception) {
             Log.e(TAG, "❌ Error cancelling alarm: ${e.message}")
+        }
+    }
+    
+    private fun stopRingtoneAndNotification(notificationId: Int) {
+        try {
+            // Stop the ringtone first
+            AlarmReceiver.stopCurrentRingtone()
+            
+            // Then cancel the notification
+            val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            notificationManager.cancel(notificationId)
+            
+            Log.d(TAG, "✅ Ringtone stopped and notification cancelled for ID: $notificationId")
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ Error stopping ringtone and notification: ${e.message}")
         }
     }
     
