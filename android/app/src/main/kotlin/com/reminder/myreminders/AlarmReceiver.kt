@@ -6,7 +6,6 @@ import android.content.Intent
 import android.util.Log
 import android.app.NotificationChannel
 import android.app.NotificationManager
-import android.media.AudioAttributes
 import android.media.RingtoneManager
 import android.media.Ringtone
 import android.net.Uri
@@ -22,6 +21,26 @@ class AlarmReceiver : BroadcastReceiver() {
     companion object {
         private const val TAG = "AlarmReceiver"
         private var currentRingtone: Ringtone? = null
+        private var currentVibrator: Vibrator? = null
+        
+        // Public method to stop ringtone from outside (called from Flutter)
+        fun stopCurrentRingtone() {
+            try {
+                currentRingtone?.let {
+                    if (it.isPlaying) {
+                        it.stop()
+                    }
+                }
+                currentRingtone = null
+                
+                currentVibrator?.cancel()
+                currentVibrator = null
+                
+                Log.d(TAG, "🔇 Ringtone and vibration stopped from external call")
+            } catch (e: Exception) {
+                Log.e(TAG, "❌ Error stopping ringtone externally: ${e.message}")
+            }
+        }
     }
     
     override fun onReceive(context: Context, intent: Intent) {
@@ -29,7 +48,14 @@ class AlarmReceiver : BroadcastReceiver() {
         
         if (intent.action == "DISMISS_ALARM") {
             val notificationId = intent.getIntExtra("notification_id", 0)
-            stopRingtone()
+            val requiresCaptcha = intent.getBooleanExtra("requiresCaptcha", false)
+            
+            if (!requiresCaptcha) {
+                // Only stop if no CAPTCHA required
+                stopRingtone()
+                stopVibration()
+            }
+            
             val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             notificationManager.cancel(notificationId)
             Log.d(TAG, "✅ Notification dismissed: $notificationId")
@@ -43,7 +69,7 @@ class AlarmReceiver : BroadcastReceiver() {
             PowerManager.ON_AFTER_RELEASE,
             "RemindMe::AlarmWakeLock"
         )
-        wakeLock.acquire(60000)
+        wakeLock.acquire(300000) // 5 minutes instead of 1
         
         try {
             val title = intent.getStringExtra("title") ?: "Reminder"
@@ -60,8 +86,8 @@ class AlarmReceiver : BroadcastReceiver() {
             Log.d(TAG, "Priority: $priority")
             Log.d(TAG, "Requires CAPTCHA: $requiresCaptcha")
             
-            playRingtone(context, soundUri)
-            vibrateDevice(context)
+            playRingtone(context, soundUri, requiresCaptcha)
+            vibrateDevice(context, requiresCaptcha)
             showNotification(context, id, title, body, soundUri, priority, requiresCaptcha)
             
             Log.d(TAG, "✅ Alarm processing complete")
@@ -75,9 +101,12 @@ class AlarmReceiver : BroadcastReceiver() {
         }
     }
     
-    private fun playRingtone(context: Context, soundUri: String?) {
+    private fun playRingtone(context: Context, soundUri: String?, requiresCaptcha: Boolean) {
         try {
-            stopRingtone()
+            // Don't stop if CAPTCHA is required - let it keep playing
+            if (!requiresCaptcha) {
+                stopRingtone()
+            }
             
             val uri: Uri = when {
                 !soundUri.isNullOrEmpty() && soundUri != "null" -> {
@@ -95,8 +124,14 @@ class AlarmReceiver : BroadcastReceiver() {
                 }
             }
             
-            Log.d(TAG, "🎵 Playing ringtone: $uri")
+            Log.d(TAG, "🎵 Playing ringtone: $uri (CAPTCHA: $requiresCaptcha)")
             currentRingtone = RingtoneManager.getRingtone(context, uri)
+            
+            if (requiresCaptcha) {
+                // For CAPTCHA alarms, loop the ringtone
+                currentRingtone?.isLooping = true
+            }
+            
             currentRingtone?.play()
         } catch (e: Exception) {
             Log.e(TAG, "❌ Error playing ringtone: ${e.message}")
@@ -117,23 +152,37 @@ class AlarmReceiver : BroadcastReceiver() {
         }
     }
     
-    private fun vibrateDevice(context: Context) {
+    private fun vibrateDevice(context: Context, requiresCaptcha: Boolean) {
         try {
-            val vibrator = context.getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
+            currentVibrator = context.getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
+            
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                vibrator.vibrate(
+                currentVibrator?.vibrate(
                     VibrationEffect.createWaveform(
                         longArrayOf(0, 500, 200, 500, 200, 500, 200, 500),
-                        0
+                        if (requiresCaptcha) 0 else -1 // Loop if CAPTCHA required
                     )
                 )
             } else {
                 @Suppress("DEPRECATION")
-                vibrator.vibrate(longArrayOf(0, 500, 200, 500, 200, 500, 200, 500), 0)
+                currentVibrator?.vibrate(
+                    longArrayOf(0, 500, 200, 500, 200, 500, 200, 500), 
+                    if (requiresCaptcha) 0 else -1
+                )
             }
-            Log.d(TAG, "📳 Device vibrating")
+            Log.d(TAG, "📳 Device vibrating (CAPTCHA: $requiresCaptcha)")
         } catch (e: Exception) {
             Log.e(TAG, "❌ Error vibrating: ${e.message}")
+        }
+    }
+    
+    private fun stopVibration() {
+        try {
+            currentVibrator?.cancel()
+            currentVibrator = null
+            Log.d(TAG, "📳 Vibration stopped")
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ Error stopping vibration: ${e.message}")
         }
     }
     
@@ -186,6 +235,7 @@ class AlarmReceiver : BroadcastReceiver() {
         val dismissIntent = Intent(context, AlarmReceiver::class.java).apply {
             action = "DISMISS_ALARM"
             putExtra("notification_id", id)
+            putExtra("requiresCaptcha", requiresCaptcha)
         }
         val dismissPendingIntent = PendingIntent.getBroadcast(
             context,
@@ -194,31 +244,41 @@ class AlarmReceiver : BroadcastReceiver() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         
+        val notificationText = if (requiresCaptcha) {
+            "🔐 Solve CAPTCHA to dismiss - $body"
+        } else {
+            body
+        }
+        
         val notification = NotificationCompat.Builder(context, channelId)
             .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
             .setContentTitle("⏰ $title")
-            .setContentText(body)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(body))
+            .setContentText(notificationText)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(notificationText))
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setCategory(NotificationCompat.CATEGORY_ALARM)
             .setAutoCancel(false)
-            .setOngoing(true)
+            .setOngoing(requiresCaptcha) // Make it persistent if CAPTCHA required
             .setContentIntent(pendingIntent)
             .setFullScreenIntent(pendingIntent, true)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setSound(null)
             .setVibrate(null)
-            .addAction(
+        
+        // Only add dismiss action if no CAPTCHA required
+        if (!requiresCaptcha) {
+            notification.addAction(
                 android.R.drawable.ic_menu_close_clear_cancel,
                 "Dismiss",
                 dismissPendingIntent
             )
-            .setDeleteIntent(dismissPendingIntent)
-            .build()
+            notification.setDeleteIntent(dismissPendingIntent)
+        }
         
-        notification.flags = notification.flags or android.app.Notification.FLAG_INSISTENT
-        notificationManager.notify(id, notification)
+        val builtNotification = notification.build()
+        builtNotification.flags = builtNotification.flags or android.app.Notification.FLAG_INSISTENT
+        notificationManager.notify(id, builtNotification)
         
-        Log.d(TAG, "✅ Notification shown with ID: $id")
+        Log.d(TAG, "✅ Notification shown with ID: $id (CAPTCHA: $requiresCaptcha)")
     }
 }
