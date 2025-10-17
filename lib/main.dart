@@ -35,8 +35,29 @@ void main() async {
   runApp(const MyRemindersApp());
 }
 
-class MyRemindersApp extends StatelessWidget {
+class MyRemindersApp extends StatefulWidget {
   const MyRemindersApp({super.key});
+
+  @override
+  State<MyRemindersApp> createState() => _MyRemindersAppState();
+}
+
+class _MyRemindersAppState extends State<MyRemindersApp> {
+  static const platform = MethodChannel('com.reminder.myreminders/alarm');
+
+  @override
+  void initState() {
+    super.initState();
+    _setupMethodChannelListener();
+  }
+
+  void _setupMethodChannelListener() {
+    platform.setMethodCallHandler((call) async {
+      if (call.method == 'onAlarmDetail') {
+        print('📱 Received alarm detail from native: ${call.arguments}');
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
