@@ -1,4 +1,13 @@
-Future<bool> scheduleAlarm(ReminderModel reminder) async {
+import 'package:shared_preferences/shared_preferences.dart';
+import '../models/reminder_model.dart';
+import 'platform_channel_service.dart';
+import 'storage_service.dart';
+
+class AlarmService {
+  final PlatformChannelService _platformService = PlatformChannelService();
+  final StorageService _storageService = StorageService();
+
+  Future<bool> scheduleAlarm(ReminderModel reminder) async {
     try {
       final DateTime now = DateTime.now();
       DateTime scheduledTime = _getNextAlarmTime(reminder, now);
@@ -48,3 +57,104 @@ Future<bool> scheduleAlarm(ReminderModel reminder) async {
       return false;
     }
   }
+
+  DateTime _getNextAlarmTime(ReminderModel reminder, DateTime now) {
+    if (!reminder.isRecurring && reminder.specificDate != null) {
+      final scheduledTime = DateTime(
+        reminder.specificDate!.year,
+        reminder.specificDate!.month,
+        reminder.specificDate!.day,
+        reminder.time.hour,
+        reminder.time.minute,
+      );
+      
+      if (scheduledTime.isAfter(now)) {
+        return scheduledTime;
+      } else {
+        print('⚠️ One-time alarm time has passed');
+        return scheduledTime;
+      }
+    }
+
+    DateTime scheduledTime = DateTime(
+      now.year,
+      now.month,
+      now.day,
+      reminder.time.hour,
+      reminder.time.minute,
+    );
+
+    if (scheduledTime.isBefore(now) || scheduledTime.isAtSameMomentAs(now)) {
+      scheduledTime = scheduledTime.add(const Duration(days: 1));
+    }
+
+    int daysChecked = 0;
+    while (daysChecked < 7) {
+      final dayOfWeek = (scheduledTime.weekday - 1) % 7;
+      
+      if (reminder.days.contains(dayOfWeek)) {
+        return scheduledTime;
+      }
+      
+      scheduledTime = scheduledTime.add(const Duration(days: 1));
+      daysChecked++;
+    }
+
+    return scheduledTime;
+  }
+
+  Future<void> cancelAlarm(String reminderId) async {
+    try {
+      final int alarmId = reminderId.hashCode.abs() % 2147483647;
+      await _platformService.cancelNativeAlarm(alarmId);
+      await _platformService.cancelNotification(alarmId);
+      print('✅ Alarm and notification cancelled for ID: $reminderId');
+    } catch (e) {
+      print('❌ Error cancelling alarm: $e');
+    }
+  }
+
+  Future<void> rescheduleAllAlarms() async {
+    try {
+      print('🔄 Checking if alarms need rescheduling...');
+      
+      final prefs = await SharedPreferences.getInstance();
+      final needsReschedule = prefs.getBool('needs_reschedule') ?? false;
+      
+      if (!needsReschedule) {
+        print('✅ No rescheduling needed');
+        return;
+      }
+
+      print('📅 Rescheduling all alarms after boot...');
+      
+      final reminders = await _storageService.loadReminders();
+      
+      for (var reminder in reminders) {
+        if (reminder.enabled) {
+          await scheduleAlarm(reminder);
+          await Future.delayed(const Duration(milliseconds: 200));
+        }
+      }
+      
+      await prefs.setBool('needs_reschedule', false);
+      print('✅ All alarms rescheduled successfully');
+    } catch (e) {
+      print('❌ Error rescheduling alarms: $e');
+    }
+  }
+
+  Future<void> cancelAllAlarms() async {
+    try {
+      final reminders = await _storageService.loadReminders();
+      
+      for (var reminder in reminders) {
+        await cancelAlarm(reminder.id);
+      }
+      
+      print('✅ All alarms cancelled');
+    } catch (e) {
+      print('❌ Error cancelling all alarms: $e');
+    }
+  }
+}
