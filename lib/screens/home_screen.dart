@@ -1,11 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
+import 'dart:async';
 import '../providers/reminder_provider.dart';
+import '../models/reminder_model.dart';
 import '../widgets/reminder_card.dart';
 import '../widgets/stats_card.dart';
 import '../utils/constants.dart';
 import 'add_edit_reminder_screen.dart';
+import 'alarm_detail_screen.dart';
+import 'package:flutter/services.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -17,6 +21,8 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   String _currentTime = '';
   String _currentDate = '';
+  static const platform = MethodChannel('com.reminder.myreminders/alarm');
+  ReminderModel? _currentAlarm;
 
   @override
   void initState() {
@@ -25,6 +31,50 @@ class _HomeScreenState extends State<HomeScreen> {
     Future.delayed(Duration.zero, () {
       context.read<ReminderProvider>().rescheduleAllAlarms();
     });
+    _setupNativeListener();
+  }
+
+  void _setupNativeListener() {
+    platform.setMethodCallHandler((call) async {
+      if (call.method == 'onAlarmDetail') {
+        final Map<dynamic, dynamic> args = call.arguments;
+        final int alarmId = args['notification_id'] ?? 0;
+        
+        // Find the reminder by ID
+        final reminders = context.read<ReminderProvider>().reminders;
+        final reminder = reminders.firstWhereOrNull((r) => r.id.hashCode.abs() % 2147483647 == alarmId);
+        
+        if (reminder != null && mounted) {
+          _showAlarmDetailScreen(reminder);
+        }
+      }
+    });
+  }
+
+  void _showAlarmDetailScreen(ReminderModel reminder) {
+    _currentAlarm = reminder;
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => AlarmDetailScreen(
+          reminder: reminder,
+          onDismiss: _dismissAlarm,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _dismissAlarm() async {
+    try {
+      if (_currentAlarm != null) {
+        final alarmId = _currentAlarm!.id.hashCode.abs() % 2147483647;
+        await platform.invokeMethod('cancelAlarm', {'alarmId': alarmId});
+        await platform.invokeMethod('cancelNotification', {'notificationId': alarmId});
+        print('✅ Alarm dismissed: $alarmId');
+      }
+    } catch (e) {
+      print('❌ Error dismissing alarm: $e');
+    }
   }
 
   void _updateTime() {
@@ -316,5 +366,15 @@ class _HomeScreenState extends State<HomeScreen> {
         ],
       ),
     );
+  }
+}
+
+extension on Iterable<ReminderModel> {
+  ReminderModel? firstWhereOrNull(bool Function(ReminderModel) test) {
+    try {
+      return firstWhere(test);
+    } catch (e) {
+      return null;
+    }
   }
 }
