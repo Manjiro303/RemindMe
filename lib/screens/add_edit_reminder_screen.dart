@@ -30,6 +30,7 @@ class _AddEditReminderScreenState extends State<AddEditReminderScreen> {
   String? _customSoundPath;
   bool _isRecurring = true;
   DateTime? _specificDate;
+  bool _requiresCaptcha = false;
 
   bool get _isEditing => widget.reminderId != null;
 
@@ -57,6 +58,7 @@ class _AddEditReminderScreenState extends State<AddEditReminderScreen> {
     _customSoundPath = reminder.customSoundPath;
     _isRecurring = reminder.isRecurring;
     _specificDate = reminder.specificDate;
+    _requiresCaptcha = reminder.requiresCaptcha;
   }
 
   @override
@@ -84,6 +86,8 @@ class _AddEditReminderScreenState extends State<AddEditReminderScreen> {
             if (_isRecurring) _buildDaysSection() else _buildDateSection(),
             const SizedBox(height: 20),
             _buildSoundSection(),
+            const SizedBox(height: 20),
+            _buildCaptchaSection(),
             const SizedBox(height: 20),
             _buildNoteField(),
             const SizedBox(height: 30),
@@ -388,6 +392,30 @@ class _AddEditReminderScreenState extends State<AddEditReminderScreen> {
     );
   }
 
+  Widget _buildCaptchaSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          '🔐 Security',
+          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(height: 12),
+        Card(
+          child: SwitchListTile(
+            title: const Text('Require CAPTCHA to Dismiss'),
+            subtitle: const Text('User must solve a math problem to dismiss alarm'),
+            value: _requiresCaptcha,
+            onChanged: (value) {
+              setState(() => _requiresCaptcha = value);
+            },
+            activeColor: const Color(0xFF33CC8C),
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildNoteField() {
     return TextFormField(
       controller: _noteController,
@@ -538,6 +566,7 @@ class _AddEditReminderScreenState extends State<AddEditReminderScreen> {
       customSoundPath: _customSoundPath,
       specificDate: _specificDate,
       isRecurring: _isRecurring,
+      requiresCaptcha: _requiresCaptcha,
     );
 
     if (_isEditing) {
