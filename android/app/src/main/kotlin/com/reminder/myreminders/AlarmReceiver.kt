@@ -51,16 +51,18 @@ class AlarmReceiver : BroadcastReceiver() {
             val id = intent.getIntExtra("id", 0)
             val soundUri = intent.getStringExtra("sound")
             val priority = intent.getStringExtra("priority") ?: "Medium"
+            val requiresCaptcha = intent.getBooleanExtra("requiresCaptcha", false)
             
             Log.d(TAG, "Title: $title")
             Log.d(TAG, "Body: $body")
             Log.d(TAG, "ID: $id")
             Log.d(TAG, "Sound URI: $soundUri")
             Log.d(TAG, "Priority: $priority")
+            Log.d(TAG, "Requires CAPTCHA: $requiresCaptcha")
             
             playRingtone(context, soundUri)
             vibrateDevice(context)
-            showNotification(context, id, title, body, soundUri, priority)
+            showNotification(context, id, title, body, soundUri, priority, requiresCaptcha)
             
             Log.d(TAG, "✅ Alarm processing complete")
             
@@ -141,7 +143,8 @@ class AlarmReceiver : BroadcastReceiver() {
         title: String,
         body: String,
         soundUri: String?,
-        priority: String
+        priority: String,
+        requiresCaptcha: Boolean
     ) {
         val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         val channelId = "reminder_alarm_channel"
@@ -164,13 +167,14 @@ class AlarmReceiver : BroadcastReceiver() {
             Log.d(TAG, "✅ Notification channel created (silent)")
         }
         
-        // Intent for opening the app with alarm details (only opens app, doesn't dismiss)
         val appIntent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
             action = "ALARM_DETAIL"
             putExtra("notification_id", id)
             putExtra("alarm_title", title)
             putExtra("alarm_body", body)
+            putExtra("alarm_priority", priority)
+            putExtra("requiresCaptcha", requiresCaptcha)
         }
         val pendingIntent = PendingIntent.getActivity(
             context, 
@@ -179,7 +183,6 @@ class AlarmReceiver : BroadcastReceiver() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         
-        // Intent for dismiss button (stops alarm and dismisses notification)
         val dismissIntent = Intent(context, AlarmReceiver::class.java).apply {
             action = "DISMISS_ALARM"
             putExtra("notification_id", id)
