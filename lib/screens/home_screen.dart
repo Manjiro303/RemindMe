@@ -34,7 +34,6 @@ class _HomeScreenState extends State<HomeScreen> {
         final int alarmId = args['notification_id'] ?? 0;
         final String alarmTitle = args['alarm_title'] ?? '';
         final String alarmBody = args['alarm_body'] ?? '';
-        final String alarmPriority = args['alarm_priority'] ?? 'Medium';
         final bool requiresCaptcha = args['requiresCaptcha'] ?? false;
         
         print('📱 Received alarm detail from native: ID=$alarmId, CAPTCHA=$requiresCaptcha');
