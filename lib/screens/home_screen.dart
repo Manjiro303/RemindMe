@@ -71,15 +71,18 @@ class _HomeScreenState extends State<HomeScreen> {
     await provider.rescheduleAllAlarms();
   }
 
-  void _showAlarmDetailScreen(ReminderModel reminder) {
-    Navigator.of(context).push(
+  void _showAlarmDetailScreen(ReminderModel reminder) async {
+    final alarmId = reminder.id.hashCode.abs() % 2147483647;
+    
+    // Open the alarm detail screen
+    await Navigator.of(context).push(
       MaterialPageRoute(
         fullscreenDialog: true,
         builder: (context) => AlarmDetailScreen(
           reminder: reminder,
           onDismiss: () async {
-            print('✅ Alarm dismissed successfully after CAPTCHA (if required)');
-            final alarmId = reminder.id.hashCode.abs() % 2147483647;
+            print('✅ CAPTCHA solved or dismissed - Stopping alarm');
+            // Stop the ringtone and vibration, then dismiss notification
             await PlatformChannelService().cancelNotification(alarmId);
           },
         ),
