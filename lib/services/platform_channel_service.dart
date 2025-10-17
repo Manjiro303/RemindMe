@@ -28,6 +28,7 @@ class PlatformChannelService {
     required String body,
     required String soundUri,
     required String priority,
+    required bool requiresCaptcha,
   }) async {
     try {
       final result = await platform.invokeMethod('scheduleAlarm', {
@@ -37,6 +38,7 @@ class PlatformChannelService {
         'body': body,
         'soundUri': soundUri.isNotEmpty ? soundUri : await getDefaultAlarmUri(),
         'priority': priority,
+        'requiresCaptcha': requiresCaptcha,
       });
       return result == true;
     } catch (e) {
