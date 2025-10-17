@@ -32,8 +32,8 @@ class _AlarmDetailScreenState extends State<AlarmDetailScreen> {
     final categoryColor = AppConstants.getCategoryColors()[widget.reminder.category]!;
     final priorityColor = AppConstants.getPriorityColors()[widget.reminder.priority]!;
 
-    return WillPopScope(
-      onWillPop: () async => false,
+    return PopScope(
+      canPop: false,
       child: Scaffold(
         body: Container(
           decoration: BoxDecoration(
