@@ -130,4 +130,22 @@ class ReminderProvider with ChangeNotifier {
   Future<void> rescheduleAllAlarms() async {
     await _alarmService.rescheduleAllAlarms();
   }
+
+  // Get reminder by ID
+  ReminderModel? getReminderById(String id) {
+    try {
+      return _reminders.firstWhere((r) => r.id == id);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  // Get reminder by alarm hash ID
+  ReminderModel? getReminderByHashId(int hashId) {
+    try {
+      return _reminders.firstWhere((r) => r.id.hashCode.abs() % 2147483647 == hashId);
+    } catch (e) {
+      return null;
+    }
+  }
 }
