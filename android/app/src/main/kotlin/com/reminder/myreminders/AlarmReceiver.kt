@@ -164,10 +164,13 @@ class AlarmReceiver : BroadcastReceiver() {
             Log.d(TAG, "✅ Notification channel created (silent)")
         }
         
+        // Intent for opening the app with alarm details (only opens app, doesn't dismiss)
         val appIntent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
+            action = "ALARM_DETAIL"
             putExtra("notification_id", id)
-            putExtra("action", "open")
+            putExtra("alarm_title", title)
+            putExtra("alarm_body", body)
         }
         val pendingIntent = PendingIntent.getActivity(
             context, 
@@ -176,6 +179,7 @@ class AlarmReceiver : BroadcastReceiver() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         
+        // Intent for dismiss button (stops alarm and dismisses notification)
         val dismissIntent = Intent(context, AlarmReceiver::class.java).apply {
             action = "DISMISS_ALARM"
             putExtra("notification_id", id)
