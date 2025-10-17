@@ -77,8 +77,9 @@ class MainActivity: FlutterActivity() {
                         val body = call.argument<String>("body") ?: ""
                         val soundUri = call.argument<String>("soundUri") ?: ""
                         val priority = call.argument<String>("priority") ?: "Medium"
+                        val requiresCaptcha = call.argument<Boolean>("requiresCaptcha") ?: false
                         
-                        scheduleNativeAlarm(alarmId, timeMillis, title, body, soundUri, priority)
+                        scheduleNativeAlarm(alarmId, timeMillis, title, body, soundUri, priority, requiresCaptcha)
                         result.success(true)
                     } catch (e: Exception) {
                         Log.e(TAG, "Error in scheduleAlarm: ${e.message}")
@@ -114,29 +115,37 @@ class MainActivity: FlutterActivity() {
         super.onNewIntent(intent)
         Log.d(TAG, "🔔 onNewIntent called with action: ${intent.action}")
         
-        // Only stop ringtone if action is DISMISS_ALARM
-        if (intent.action == "DISMISS_ALARM") {
-            stopAllRingtones()
-        } else {
-            // For opening app from notification, just open the alarm detail screen
-            Log.d(TAG, "Opening app from notification")
+        if (intent.action == "ALARM_DETAIL") {
+            handleAlarmDetail(intent)
+        }
+    }
+
+    private fun handleAlarmDetail(intent: Intent) {
+        val notificationId = intent.getIntExtra("notification_id", 0)
+        val alarmTitle = intent.getStringExtra("alarm_title") ?: ""
+        val alarmBody = intent.getStringExtra("alarm_body") ?: ""
+        val alarmPriority = intent.getStringExtra("alarm_priority") ?: "Medium"
+        val requiresCaptcha = intent.getBooleanExtra("requiresCaptcha", false)
+        
+        Log.d(TAG, "Opening alarm detail: $alarmTitle, CAPTCHA: $requiresCaptcha")
+        
+        flutterEngine?.dartExecutor?.binaryMessenger?.let { messenger ->
+            MethodChannel(messenger, ALARM_CHANNEL).invokeMethod(
+                "onAlarmDetail",
+                mapOf(
+                    "notification_id" to notificationId,
+                    "alarm_title" to alarmTitle,
+                    "alarm_body" to alarmBody,
+                    "alarm_priority" to alarmPriority,
+                    "requiresCaptcha" to requiresCaptcha
+                )
+            )
         }
     }
 
     override fun onResume() {
         super.onResume()
         Log.d(TAG, "onResume called")
-    }
-
-    private fun stopAllRingtones() {
-        try {
-            val audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
-            val intent = Intent("com.reminder.myreminders.STOP_RINGTONE")
-            sendBroadcast(intent)
-            Log.d(TAG, "🔇 Stopped all ringtones")
-        } catch (e: Exception) {
-            Log.e(TAG, "Error stopping ringtones: ${e.message}")
-        }
     }
 
     private fun openAppSettings() {
@@ -184,7 +193,8 @@ class MainActivity: FlutterActivity() {
         title: String,
         body: String,
         soundUri: String,
-        priority: String
+        priority: String,
+        requiresCaptcha: Boolean
     ) {
         val alarmManager = getSystemService(Context.ALARM_SERVICE) as AlarmManager
         
@@ -195,6 +205,7 @@ class MainActivity: FlutterActivity() {
         Log.d(TAG, "  - Body: $body")
         Log.d(TAG, "  - Sound: $soundUri")
         Log.d(TAG, "  - Priority: $priority")
+        Log.d(TAG, "  - Requires CAPTCHA: $requiresCaptcha")
         
         cancelNativeAlarm(alarmId)
         cancelNotification(alarmId)
@@ -205,6 +216,7 @@ class MainActivity: FlutterActivity() {
             putExtra("body", body)
             putExtra("sound", soundUri)
             putExtra("priority", priority)
+            putExtra("requiresCaptcha", requiresCaptcha)
         }
         
         val pendingIntent = PendingIntent.getBroadcast(
