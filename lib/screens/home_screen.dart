@@ -34,34 +34,33 @@ class _HomeScreenState extends State<HomeScreen> {
         final int alarmId = args['notification_id'] ?? 0;
         final String alarmTitle = args['alarm_title'] ?? '';
         final String alarmBody = args['alarm_body'] ?? '';
+        final String alarmPriority = args['alarm_priority'] ?? 'Medium';
         final bool requiresCaptcha = args['requiresCaptcha'] ?? false;
         
-        print('📱 Received alarm detail: ID=$alarmId, Title=$alarmTitle, CAPTCHA=$requiresCaptcha');
+        print('📱 Received alarm detail from native: ID=$alarmId, CAPTCHA=$requiresCaptcha');
         
         final reminders = context.read<ReminderProvider>().reminders;
         ReminderModel? reminder;
         
-        // Try to find reminder by hash ID
         try {
           reminder = reminders.firstWhere(
             (r) => r.id.hashCode.abs() % 2147483647 == alarmId
           );
-          print('✅ Found reminder: ${reminder.text}, CAPTCHA=${reminder.requiresCaptcha}');
+          print('✅ Found reminder by hash: ${reminder.text}, CAPTCHA=${reminder.requiresCaptcha}');
         } catch (e) {
-          print('⚠️ Could not find reminder with hash ID: $alarmId');
-          // If not found by hash, try to find by title/body match
+          print('⚠️ Could not find reminder with hash ID: $alarmId, trying text match');
           try {
             reminder = reminders.firstWhere(
               (r) => r.text == alarmBody || r.category == alarmTitle
             );
-            print('✅ Found reminder by text match: ${reminder.text}');
+            print('✅ Found reminder by text: ${reminder.text}');
           } catch (e2) {
             print('❌ Could not find reminder at all');
           }
         }
         
         if (reminder != null && mounted) {
-          print('🔔 Opening alarm detail screen for: ${reminder.text}');
+          print('🔔 Opening alarm detail screen - CAPTCHA required: ${reminder.requiresCaptcha}');
           _showAlarmDetailScreen(reminder);
         }
       }
@@ -74,15 +73,13 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _showAlarmDetailScreen(ReminderModel reminder) {
-    print('📱 Showing alarm detail screen - CAPTCHA required: ${reminder.requiresCaptcha}');
-    
     Navigator.of(context).push(
       MaterialPageRoute(
         fullscreenDialog: true,
         builder: (context) => AlarmDetailScreen(
           reminder: reminder,
           onDismiss: () async {
-            print('✅ Alarm dismissed for: ${reminder.text}');
+            print('✅ Alarm dismissed successfully after CAPTCHA (if required)');
             final alarmId = reminder.id.hashCode.abs() % 2147483647;
             await PlatformChannelService().cancelNotification(alarmId);
           },
