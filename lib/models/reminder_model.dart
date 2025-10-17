@@ -13,6 +13,7 @@ class ReminderModel {
   String? customSoundPath;
   DateTime? specificDate;
   bool isRecurring;
+  bool requiresCaptcha;
 
   ReminderModel({
     required this.id,
@@ -27,6 +28,7 @@ class ReminderModel {
     this.customSoundPath,
     this.specificDate,
     this.isRecurring = true,
+    this.requiresCaptcha = false,
   }) : days = days ?? List.generate(7, (index) => index);
 
   Map<String, dynamic> toJson() {
@@ -43,6 +45,7 @@ class ReminderModel {
       'customSoundPath': customSoundPath,
       'specificDate': specificDate?.toIso8601String(),
       'isRecurring': isRecurring,
+      'requiresCaptcha': requiresCaptcha,
     };
   }
 
@@ -66,6 +69,7 @@ class ReminderModel {
           ? DateTime.parse(json['specificDate']) 
           : null,
       isRecurring: json['isRecurring'] ?? true,
+      requiresCaptcha: json['requiresCaptcha'] ?? false,
     );
   }
 
@@ -82,6 +86,7 @@ class ReminderModel {
     String? customSoundPath,
     DateTime? specificDate,
     bool? isRecurring,
+    bool? requiresCaptcha,
   }) {
     return ReminderModel(
       id: id ?? this.id,
@@ -96,6 +101,7 @@ class ReminderModel {
       customSoundPath: customSoundPath ?? this.customSoundPath,
       specificDate: specificDate ?? this.specificDate,
       isRecurring: isRecurring ?? this.isRecurring,
+      requiresCaptcha: requiresCaptcha ?? this.requiresCaptcha,
     );
   }
 }
