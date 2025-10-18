@@ -25,6 +25,52 @@ class _HomeScreenState extends State<HomeScreen> {
     super.initState();
     _setupNativeListener();
     _checkAndRescheduleAlarms();
+    _checkForPendingAlarm();
+  }
+
+  Future<void> _checkForPendingAlarm() async {
+    // Small delay to ensure context is ready
+    await Future.delayed(const Duration(milliseconds: 500));
+    
+    // Check if app was opened via notification
+    final intent = await platform.invokeMethod('getInitialIntent');
+    if (intent != null && mounted) {
+      _handleAlarmIntent(intent);
+    }
+  }
+
+  void _handleAlarmIntent(Map<dynamic, dynamic> args) {
+    final int alarmId = args['notification_id'] ?? 0;
+    final String alarmTitle = args['alarm_title'] ?? '';
+    final String alarmBody = args['alarm_body'] ?? '';
+    final bool requiresCaptcha = args['requiresCaptcha'] ?? false;
+    
+    print('📱 Handling alarm intent: ID=$alarmId, CAPTCHA=$requiresCaptcha');
+    
+    final reminders = context.read<ReminderProvider>().reminders;
+    ReminderModel? reminder;
+    
+    try {
+      reminder = reminders.firstWhere(
+        (r) => r.id.hashCode.abs() % 2147483647 == alarmId
+      );
+      print('✅ Found reminder by hash: ${reminder.text}, CAPTCHA=${reminder.requiresCaptcha}');
+    } catch (e) {
+      print('⚠️ Could not find reminder with hash ID: $alarmId, trying text match');
+      try {
+        reminder = reminders.firstWhere(
+          (r) => r.text == alarmBody || r.category == alarmTitle
+        );
+        print('✅ Found reminder by text: ${reminder.text}');
+      } catch (e2) {
+        print('❌ Could not find reminder at all');
+      }
+    }
+    
+    if (reminder != null && mounted) {
+      print('🔔 Opening alarm detail screen - CAPTCHA required: ${reminder.requiresCaptcha}');
+      _showAlarmDetailScreen(reminder);
+    }
   }
 
   void _setupNativeListener() {
