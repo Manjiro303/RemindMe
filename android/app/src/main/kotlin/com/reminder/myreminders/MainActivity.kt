@@ -114,9 +114,31 @@ class MainActivity: FlutterActivity() {
                         result.error("STOP_RINGTONE_ERROR", e.message, null)
                     }
                 }
+                "getInitialIntent" -> {
+                    try {
+                        val intentData = getIntentData(intent)
+                        result.success(intentData)
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error getting initial intent: ${e.message}")
+                        result.success(null)
+                    }
+                }
                 else -> result.notImplemented()
             }
         }
+    }
+
+    private fun getIntentData(intent: Intent?): Map<String, Any>? {
+        if (intent?.action == "ALARM_DETAIL") {
+            return mapOf(
+                "notification_id" to (intent.getIntExtra("notification_id", 0)),
+                "alarm_title" to (intent.getStringExtra("alarm_title") ?: ""),
+                "alarm_body" to (intent.getStringExtra("alarm_body") ?: ""),
+                "alarm_priority" to (intent.getStringExtra("alarm_priority") ?: "Medium"),
+                "requiresCaptcha" to (intent.getBooleanExtra("requiresCaptcha", false))
+            )
+        }
+        return null
     }
 
     override fun onNewIntent(intent: Intent) {
