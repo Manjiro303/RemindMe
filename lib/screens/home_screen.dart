@@ -8,7 +8,6 @@ import '../widgets/stats_card.dart';
 import '../utils/constants.dart';
 import 'add_edit_reminder_screen.dart';
 import 'alarm_detail_screen.dart';
-import '../services/platform_channel_service.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -69,7 +68,7 @@ class _HomeScreenState extends State<HomeScreen> {
     
     if (reminder != null && mounted) {
       print('🔔 Opening alarm detail screen - CAPTCHA required: ${reminder.requiresCaptcha}');
-      _showAlarmDetailScreen(reminder);
+      _showAlarmDetailScreen(reminder, alarmId);
     }
   }
 
@@ -106,7 +105,7 @@ class _HomeScreenState extends State<HomeScreen> {
         
         if (reminder != null && mounted) {
           print('🔔 Opening alarm detail screen - CAPTCHA required: ${reminder.requiresCaptcha}');
-          _showAlarmDetailScreen(reminder);
+          _showAlarmDetailScreen(reminder, alarmId);
         }
       }
     });
@@ -117,20 +116,14 @@ class _HomeScreenState extends State<HomeScreen> {
     await provider.rescheduleAllAlarms();
   }
 
-  void _showAlarmDetailScreen(ReminderModel reminder) async {
-    final alarmId = reminder.id.hashCode.abs() % 2147483647;
-    
+  void _showAlarmDetailScreen(ReminderModel reminder, int notificationId) async {
     // Open the alarm detail screen
     await Navigator.of(context).push(
       MaterialPageRoute(
         fullscreenDialog: true,
         builder: (context) => AlarmDetailScreen(
           reminder: reminder,
-          onDismiss: () async {
-            print('✅ CAPTCHA solved or dismissed - Stopping alarm');
-            // Stop the ringtone and vibration, then dismiss notification
-            await PlatformChannelService().cancelNotification(alarmId);
-          },
+          notificationId: notificationId,
         ),
       ),
     );
