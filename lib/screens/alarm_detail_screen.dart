@@ -1,16 +1,17 @@
 import 'package:flutter/material.dart';
 import '../models/reminder_model.dart';
 import '../utils/constants.dart';
+import '../services/platform_channel_service.dart';
 import 'captcha_screen.dart';
 
 class AlarmDetailScreen extends StatefulWidget {
   final ReminderModel reminder;
-  final VoidCallback onDismiss;
+  final int notificationId;
 
   const AlarmDetailScreen({
     super.key,
     required this.reminder,
-    required this.onDismiss,
+    required this.notificationId,
   });
 
   @override
@@ -24,7 +25,7 @@ class _AlarmDetailScreenState extends State<AlarmDetailScreen> {
   Widget build(BuildContext context) {
     if (_showCaptcha && widget.reminder.requiresCaptcha) {
       return CaptchaScreen(
-        onSuccess: _handleDismiss,
+        onSuccess: _handleDismissAfterCaptcha,
         reminderText: widget.reminder.text,
       );
     }
@@ -33,7 +34,12 @@ class _AlarmDetailScreenState extends State<AlarmDetailScreen> {
     final priorityColor = AppConstants.getPriorityColors()[widget.reminder.priority]!;
 
     return PopScope(
-      canPop: false,
+      canPop: !widget.reminder.requiresCaptcha,
+      onPopInvoked: (didPop) {
+        if (didPop && !widget.reminder.requiresCaptcha) {
+          _handleDismissWithoutCaptcha();
+        }
+      },
       child: Scaffold(
         body: Container(
           decoration: BoxDecoration(
@@ -157,10 +163,15 @@ class _AlarmDetailScreenState extends State<AlarmDetailScreen> {
                         child: ElevatedButton.icon(
                           onPressed: widget.reminder.requiresCaptcha
                               ? () => setState(() => _showCaptcha = true)
-                              : _handleDismiss,
-                          icon: const Icon(Icons.check_circle, size: 28),
+                              : _handleDismissWithoutCaptcha,
+                          icon: Icon(
+                            widget.reminder.requiresCaptcha ? Icons.lock : Icons.check_circle, 
+                            size: 28
+                          ),
                           label: Text(
-                            widget.reminder.requiresCaptcha ? 'Solve CAPTCHA to Dismiss' : 'Dismiss',
+                            widget.reminder.requiresCaptcha 
+                                ? 'Solve CAPTCHA to Dismiss' 
+                                : 'Dismiss',
                             style: const TextStyle(
                               fontSize: 18,
                               fontWeight: FontWeight.bold,
@@ -236,8 +247,19 @@ class _AlarmDetailScreenState extends State<AlarmDetailScreen> {
     return '$hour:$minute $period';
   }
 
-  void _handleDismiss() {
-    widget.onDismiss();
-    Navigator.pop(context);
+  Future<void> _handleDismissWithoutCaptcha() async {
+    print('✅ Dismissing alarm without CAPTCHA');
+    await PlatformChannelService().cancelNotification(widget.notificationId);
+    if (mounted) {
+      Navigator.pop(context);
+    }
+  }
+
+  Future<void> _handleDismissAfterCaptcha() async {
+    print('✅ CAPTCHA solved - Stopping alarm and dismissing');
+    await PlatformChannelService().cancelNotification(widget.notificationId);
+    if (mounted) {
+      Navigator.pop(context);
+    }
   }
 }
