@@ -59,6 +59,7 @@ class AlarmService {
   }
 
   DateTime _getNextAlarmTime(ReminderModel reminder, DateTime now) {
+    // Handle one-time reminders
     if (!reminder.isRecurring && reminder.specificDate != null) {
       final scheduledTime = DateTime(
         reminder.specificDate!.year,
@@ -68,14 +69,10 @@ class AlarmService {
         reminder.time.minute,
       );
       
-      if (scheduledTime.isAfter(now)) {
-        return scheduledTime;
-      } else {
-        print('⚠️ One-time alarm time has passed');
-        return scheduledTime;
-      }
+      return scheduledTime;
     }
 
+    // Handle recurring reminders
     DateTime scheduledTime = DateTime(
       now.year,
       now.month,
@@ -84,13 +81,21 @@ class AlarmService {
       reminder.time.minute,
     );
 
+    // If the time has passed today, start checking from tomorrow
     if (scheduledTime.isBefore(now) || scheduledTime.isAtSameMomentAs(now)) {
       scheduledTime = scheduledTime.add(const Duration(days: 1));
     }
 
+    // If no days are selected, default to all days
+    if (reminder.days.isEmpty) {
+      return scheduledTime;
+    }
+
+    // Find the next valid day
     int daysChecked = 0;
-    while (daysChecked < 7) {
-      final dayOfWeek = (scheduledTime.weekday - 1) % 7;
+    while (daysChecked < 8) {
+      // Check up to 8 days to ensure we find a valid day
+      final dayOfWeek = (scheduledTime.weekday - 1) % 7; // Convert to 0-6 (Monday = 0)
       
       if (reminder.days.contains(dayOfWeek)) {
         return scheduledTime;
@@ -100,6 +105,7 @@ class AlarmService {
       daysChecked++;
     }
 
+    // Fallback: return the calculated time
     return scheduledTime;
   }
 
