@@ -44,6 +44,12 @@ class _CaptchaScreenState extends State<CaptchaScreen> {
         _correctAnswer = _num1 + _num2;
         break;
       case '-':
+        // Ensure positive result
+        if (_num1 < _num2) {
+          final temp = _num1;
+          _num1 = _num2;
+          _num2 = temp;
+        }
         _correctAnswer = _num1 - _num2;
         break;
       case '×':
@@ -82,28 +88,31 @@ class _CaptchaScreenState extends State<CaptchaScreen> {
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        title: const Row(
-          children: [
-            Icon(Icons.check_circle, color: Colors.green, size: 28),
-            SizedBox(width: 12),
-            Text('Correct!'),
+      builder: (context) => PopScope(
+        canPop: false,
+        child: AlertDialog(
+          title: const Row(
+            children: [
+              Icon(Icons.check_circle, color: Colors.green, size: 28),
+              SizedBox(width: 12),
+              Text('Correct!'),
+            ],
+          ),
+          content: const Text('CAPTCHA solved successfully. Your alarm is dismissed.'),
+          actions: [
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(context); // Close dialog
+                widget.onSuccess(); // Stop alarm and dismiss
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.green,
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('OK'),
+            ),
           ],
         ),
-        content: const Text('CAPTCHA solved successfully. Your alarm is dismissed.'),
-        actions: [
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-              widget.onSuccess();
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.green,
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('OK'),
-          ),
-        ],
       ),
     );
   }
@@ -112,33 +121,36 @@ class _CaptchaScreenState extends State<CaptchaScreen> {
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        title: const Row(
-          children: [
-            Icon(Icons.error, color: Colors.red, size: 28),
-            SizedBox(width: 12),
-            Text('Max Attempts Reached'),
+      builder: (context) => PopScope(
+        canPop: false,
+        child: AlertDialog(
+          title: const Row(
+            children: [
+              Icon(Icons.error, color: Colors.red, size: 28),
+              SizedBox(width: 12),
+              Text('Max Attempts Reached'),
+            ],
+          ),
+          content: const Text(
+            'You have reached the maximum number of attempts. The alarm will continue ringing. Please try again.',
+          ),
+          actions: [
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(context); // Close dialog
+                setState(() {
+                  _attempts = 0;
+                  _generateCaptcha();
+                });
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.orange,
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('Retry'),
+            ),
           ],
         ),
-        content: const Text(
-          'You have reached the maximum number of attempts. The alarm will continue ringing. Please try again.',
-        ),
-        actions: [
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-              setState(() {
-                _attempts = 0;
-                _generateCaptcha();
-              });
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.orange,
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('Retry'),
-          ),
-        ],
       ),
     );
   }
@@ -285,6 +297,7 @@ class _CaptchaScreenState extends State<CaptchaScreen> {
                                   fontSize: 24,
                                   fontWeight: FontWeight.bold,
                                 ),
+                                onSubmitted: (_) => _submitAnswer(),
                               ),
 
                               if (_showError) ...[
