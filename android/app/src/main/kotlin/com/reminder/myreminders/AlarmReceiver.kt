@@ -46,19 +46,22 @@ class AlarmReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         Log.d(TAG, "🔔 ========== ALARM RECEIVED ==========")
         
+        // Don't handle dismiss actions for CAPTCHA-protected alarms
         if (intent.action == "DISMISS_ALARM") {
             val notificationId = intent.getIntExtra("notification_id", 0)
             val requiresCaptcha = intent.getBooleanExtra("requiresCaptcha", false)
             
+            // Only allow dismissal if CAPTCHA is not required
             if (!requiresCaptcha) {
-                // Only stop if no CAPTCHA required
                 stopRingtone()
                 stopVibration()
+                
+                val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                notificationManager.cancel(notificationId)
+                Log.d(TAG, "✅ Notification dismissed: $notificationId")
+            } else {
+                Log.d(TAG, "⚠️ Cannot dismiss - CAPTCHA required")
             }
-            
-            val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            notificationManager.cancel(notificationId)
-            Log.d(TAG, "✅ Notification dismissed: $notificationId")
             return
         }
         
@@ -69,7 +72,7 @@ class AlarmReceiver : BroadcastReceiver() {
             PowerManager.ON_AFTER_RELEASE,
             "RemindMe::AlarmWakeLock"
         )
-        wakeLock.acquire(300000) // 5 minutes instead of 1
+        wakeLock.acquire(300000) // 5 minutes
         
         try {
             val title = intent.getStringExtra("title") ?: "Reminder"
@@ -103,10 +106,8 @@ class AlarmReceiver : BroadcastReceiver() {
     
     private fun playRingtone(context: Context, soundUri: String?, requiresCaptcha: Boolean) {
         try {
-            // Don't stop if CAPTCHA is required - let it keep playing
-            if (!requiresCaptcha) {
-                stopRingtone()
-            }
+            // Always stop any existing ringtone first
+            stopRingtone()
             
             val uri: Uri = when {
                 !soundUri.isNullOrEmpty() && soundUri != "null" -> {
@@ -127,8 +128,8 @@ class AlarmReceiver : BroadcastReceiver() {
             Log.d(TAG, "🎵 Playing ringtone: $uri (CAPTCHA: $requiresCaptcha)")
             currentRingtone = RingtoneManager.getRingtone(context, uri)
             
+            // For CAPTCHA alarms, loop the ringtone
             if (requiresCaptcha) {
-                // For CAPTCHA alarms, loop the ringtone
                 currentRingtone?.isLooping = true
             }
             
@@ -232,18 +233,6 @@ class AlarmReceiver : BroadcastReceiver() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         
-        val dismissIntent = Intent(context, AlarmReceiver::class.java).apply {
-            action = "DISMISS_ALARM"
-            putExtra("notification_id", id)
-            putExtra("requiresCaptcha", requiresCaptcha)
-        }
-        val dismissPendingIntent = PendingIntent.getBroadcast(
-            context,
-            id + 1000,
-            dismissIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-        
         val notificationText = if (requiresCaptcha) {
             "🔐 Solve CAPTCHA to dismiss - $body"
         } else {
@@ -267,6 +256,18 @@ class AlarmReceiver : BroadcastReceiver() {
         
         // Only add dismiss action if no CAPTCHA required
         if (!requiresCaptcha) {
+            val dismissIntent = Intent(context, AlarmReceiver::class.java).apply {
+                action = "DISMISS_ALARM"
+                putExtra("notification_id", id)
+                putExtra("requiresCaptcha", requiresCaptcha)
+            }
+            val dismissPendingIntent = PendingIntent.getBroadcast(
+                context,
+                id + 1000,
+                dismissIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            
             notification.addAction(
                 android.R.drawable.ic_menu_close_clear_cancel,
                 "Dismiss",
