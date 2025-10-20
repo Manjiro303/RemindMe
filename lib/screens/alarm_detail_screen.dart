@@ -35,7 +35,7 @@ class _AlarmDetailScreenState extends State<AlarmDetailScreen> {
 
     return PopScope(
       canPop: !widget.reminder.requiresCaptcha,
-      onPopInvoked: (didPop) {
+      onPopInvokedWithResult: (didPop, result) {
         if (didPop && !widget.reminder.requiresCaptcha) {
           _handleDismissWithoutCaptcha();
         }
