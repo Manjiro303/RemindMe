@@ -65,7 +65,6 @@ class _MyRemindersAppState extends State<MyRemindersApp> {
 
   void _handleAlarmFromNative(Map<dynamic, dynamic> args) {
     final int alarmId = args['notification_id'] ?? 0;
-    final String alarmTitle = args['alarm_title'] ?? '';
     final String alarmBody = args['alarm_body'] ?? '';
     final bool requiresCaptcha = args['requiresCaptcha'] ?? false;
     
