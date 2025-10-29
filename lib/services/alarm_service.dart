@@ -67,6 +67,8 @@ class AlarmService {
         reminder.specificDate!.day,
         reminder.time.hour,
         reminder.time.minute,
+        0,
+        0,
       );
       
       return scheduledTime;
@@ -79,30 +81,46 @@ class AlarmService {
       now.day,
       reminder.time.hour,
       reminder.time.minute,
+      0,
+      0,
     );
 
-    // If the time has passed today, start checking from tomorrow
+    // If no days are selected, treat as all days selected
+    List<int> selectedDays = reminder.days.isEmpty 
+        ? List.generate(7, (index) => index) 
+        : reminder.days;
+
+    // If the time has passed today or is now, start from tomorrow
     if (scheduledTime.isBefore(now) || scheduledTime.isAtSameMomentAs(now)) {
-      scheduledTime = scheduledTime.add(const Duration(days: 1));
+      scheduledTime = DateTime(
+        now.year,
+        now.month,
+        now.day + 1,
+        reminder.time.hour,
+        reminder.time.minute,
+        0,
+        0,
+      );
     }
 
-    // If no days are selected, default to all days
-    if (reminder.days.isEmpty) {
-      return scheduledTime;
-    }
-
-    // Find the next valid day
-    int daysChecked = 0;
-    while (daysChecked < 8) {
-      // Check up to 8 days to ensure we find a valid day
+    // Find the next valid day (check up to 7 days)
+    for (int i = 0; i < 7; i++) {
       final dayOfWeek = (scheduledTime.weekday - 1) % 7; // Convert to 0-6 (Monday = 0)
       
-      if (reminder.days.contains(dayOfWeek)) {
+      if (selectedDays.contains(dayOfWeek)) {
         return scheduledTime;
       }
       
-      scheduledTime = scheduledTime.add(const Duration(days: 1));
-      daysChecked++;
+      // Move to next day
+      scheduledTime = DateTime(
+        scheduledTime.year,
+        scheduledTime.month,
+        scheduledTime.day + 1,
+        reminder.time.hour,
+        reminder.time.minute,
+        0,
+        0,
+      );
     }
 
     // Fallback: return the calculated time
@@ -139,7 +157,7 @@ class AlarmService {
       for (var reminder in reminders) {
         if (reminder.enabled) {
           await scheduleAlarm(reminder);
-          await Future.delayed(const Duration(milliseconds: 200));
+          await Future.delayed(const Duration(milliseconds: 300));
         }
       }
       
