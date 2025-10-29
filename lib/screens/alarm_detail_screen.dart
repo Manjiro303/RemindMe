@@ -18,8 +18,34 @@ class AlarmDetailScreen extends StatefulWidget {
   State<AlarmDetailScreen> createState() => _AlarmDetailScreenState();
 }
 
-class _AlarmDetailScreenState extends State<AlarmDetailScreen> {
+class _AlarmDetailScreenState extends State<AlarmDetailScreen> with SingleTickerProviderStateMixin {
   bool _showCaptcha = false;
+  late AnimationController _animationController;
+  late Animation<double> _scaleAnimation;
+  late Animation<double> _pulseAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _animationController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1500),
+    )..repeat(reverse: true);
+
+    _scaleAnimation = Tween<double>(begin: 0.95, end: 1.05).animate(
+      CurvedAnimation(parent: _animationController, curve: Curves.easeInOut),
+    );
+
+    _pulseAnimation = Tween<double>(begin: 0.0, end: 10.0).animate(
+      CurvedAnimation(parent: _animationController, curve: Curves.easeInOut),
+    );
+  }
+
+  @override
+  void dispose() {
+    _animationController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -47,8 +73,9 @@ class _AlarmDetailScreenState extends State<AlarmDetailScreen> {
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
               colors: [
-                categoryColor.withOpacity(0.8),
-                categoryColor.withOpacity(0.3),
+                categoryColor.withOpacity(0.9),
+                categoryColor.withOpacity(0.5),
+                categoryColor.withOpacity(0.2),
               ],
             ),
           ),
@@ -60,55 +87,120 @@ class _AlarmDetailScreenState extends State<AlarmDetailScreen> {
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      // Animated alarm icon
-                      Container(
-                        width: 100,
-                        height: 100,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: Colors.white.withOpacity(0.2),
-                        ),
-                        child: const Icon(
-                          Icons.notifications_active,
-                          size: 60,
-                          color: Colors.white,
-                        ),
+                      // Animated alarm icon with pulse effect
+                      AnimatedBuilder(
+                        animation: _animationController,
+                        builder: (context, child) {
+                          return Stack(
+                            alignment: Alignment.center,
+                            children: [
+                              // Pulse rings
+                              Container(
+                                width: 120 + _pulseAnimation.value * 2,
+                                height: 120 + _pulseAnimation.value * 2,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: Colors.white.withOpacity(0.1 - _pulseAnimation.value / 100),
+                                ),
+                              ),
+                              Container(
+                                width: 110 + _pulseAnimation.value,
+                                height: 110 + _pulseAnimation.value,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: Colors.white.withOpacity(0.15 - _pulseAnimation.value / 100),
+                                ),
+                              ),
+                              // Main icon
+                              Transform.scale(
+                                scale: _scaleAnimation.value,
+                                child: Container(
+                                  width: 100,
+                                  height: 100,
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    color: Colors.white.withOpacity(0.25),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Colors.black.withOpacity(0.2),
+                                        blurRadius: 20,
+                                        spreadRadius: 5,
+                                      ),
+                                    ],
+                                  ),
+                                  child: const Icon(
+                                    Icons.notifications_active,
+                                    size: 50,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          );
+                        },
                       ),
                       const SizedBox(height: 32),
 
-                      // Reminder title
-                      Text(
-                        'Reminder Alert',
-                        style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
+                      // Reminder title with shadow
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.2),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Text(
+                          '🔔 Reminder Alert',
+                          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            shadows: [
+                              Shadow(
+                                color: Colors.black.withOpacity(0.3),
+                                offset: const Offset(0, 2),
+                                blurRadius: 4,
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                       const SizedBox(height: 24),
 
-                      // Reminder text
+                      // Reminder text card with improved design
                       Card(
-                        color: Colors.white.withOpacity(0.95),
+                        elevation: 8,
+                        color: Colors.white.withOpacity(0.98),
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(20),
+                          borderRadius: BorderRadius.circular(24),
                         ),
                         child: Padding(
-                          padding: const EdgeInsets.all(20),
+                          padding: const EdgeInsets.all(24),
                           child: Column(
                             children: [
-                              Text(
-                                widget.reminder.text,
-                                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                                  color: Colors.black87,
-                                  fontWeight: FontWeight.bold,
+                              // Main reminder text
+                              Container(
+                                padding: const EdgeInsets.all(16),
+                                decoration: BoxDecoration(
+                                  color: categoryColor.withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(16),
+                                  border: Border.all(
+                                    color: categoryColor.withOpacity(0.3),
+                                    width: 2,
+                                  ),
                                 ),
-                                textAlign: TextAlign.center,
+                                child: Text(
+                                  widget.reminder.text,
+                                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                                    color: Colors.black87,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                  textAlign: TextAlign.center,
+                                ),
                               ),
                               const SizedBox(height: 20),
-                              Divider(color: Colors.grey[300]),
+                              Divider(color: Colors.grey[300], thickness: 1),
                               const SizedBox(height: 20),
 
-                              // Time
+                              // Details with improved layout
                               _buildDetailRow(
                                 icon: Icons.access_time,
                                 label: 'Time',
@@ -116,8 +208,6 @@ class _AlarmDetailScreenState extends State<AlarmDetailScreen> {
                                 valueColor: categoryColor,
                               ),
                               const SizedBox(height: 16),
-
-                              // Category
                               _buildDetailRow(
                                 icon: Icons.category,
                                 label: 'Category',
@@ -125,8 +215,6 @@ class _AlarmDetailScreenState extends State<AlarmDetailScreen> {
                                 valueColor: categoryColor,
                               ),
                               const SizedBox(height: 16),
-
-                              // Priority
                               _buildDetailRow(
                                 icon: Icons.flag,
                                 label: 'Priority',
@@ -139,7 +227,7 @@ class _AlarmDetailScreenState extends State<AlarmDetailScreen> {
                                   icon: Icons.note,
                                   label: 'Note',
                                   value: widget.reminder.note,
-                                  valueColor: Colors.grey,
+                                  valueColor: Colors.grey[700]!,
                                   multiLine: true,
                                 ),
                               ],
@@ -149,12 +237,13 @@ class _AlarmDetailScreenState extends State<AlarmDetailScreen> {
                       ),
                       const SizedBox(height: 32),
 
-                      // Dismiss button
+                      // Improved dismiss button
                       Container(
                         decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(24),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.black.withOpacity(0.2),
+                              color: Colors.black.withOpacity(0.3),
                               blurRadius: 20,
                               offset: const Offset(0, 10),
                             ),
@@ -165,28 +254,29 @@ class _AlarmDetailScreenState extends State<AlarmDetailScreen> {
                               ? () => setState(() => _showCaptcha = true)
                               : _handleDismissWithoutCaptcha,
                           icon: Icon(
-                            widget.reminder.requiresCaptcha ? Icons.lock : Icons.check_circle, 
+                            widget.reminder.requiresCaptcha ? Icons.lock_outline : Icons.check_circle_outline, 
                             size: 28
                           ),
                           label: Text(
                             widget.reminder.requiresCaptcha 
                                 ? 'Solve CAPTCHA to Dismiss' 
-                                : 'Dismiss',
+                                : 'Dismiss Alarm',
                             style: const TextStyle(
                               fontSize: 18,
                               fontWeight: FontWeight.bold,
+                              letterSpacing: 0.5,
                             ),
                           ),
                           style: ElevatedButton.styleFrom(
                             padding: const EdgeInsets.symmetric(
-                              horizontal: 40,
-                              vertical: 16,
+                              horizontal: 32,
+                              vertical: 18,
                             ),
                             backgroundColor: Colors.white,
                             foregroundColor: categoryColor,
-                            elevation: 8,
+                            elevation: 0,
                             shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(20),
+                              borderRadius: BorderRadius.circular(24),
                             ),
                           ),
                         ),
@@ -209,34 +299,48 @@ class _AlarmDetailScreenState extends State<AlarmDetailScreen> {
     required Color valueColor,
     bool multiLine = false,
   }) {
-    return Row(
-      crossAxisAlignment: multiLine ? CrossAxisAlignment.start : CrossAxisAlignment.center,
-      children: [
-        Icon(icon, color: Colors.grey[600], size: 20),
-        const SizedBox(width: 12),
-        Text(
-          label,
-          style: const TextStyle(
-            color: Colors.grey,
-            fontSize: 14,
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-        const Spacer(),
-        Expanded(
-          child: Text(
-            value,
-            textAlign: TextAlign.right,
-            style: TextStyle(
-              color: valueColor,
-              fontSize: 14,
-              fontWeight: FontWeight.bold,
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.grey[50],
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        crossAxisAlignment: multiLine ? CrossAxisAlignment.start : CrossAxisAlignment.center,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: valueColor.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(8),
             ),
-            maxLines: multiLine ? 3 : 1,
-            overflow: TextOverflow.ellipsis,
+            child: Icon(icon, color: valueColor, size: 20),
           ),
-        ),
-      ],
+          const SizedBox(width: 12),
+          Text(
+            label,
+            style: TextStyle(
+              color: Colors.grey[700],
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const Spacer(),
+          Flexible(
+            child: Text(
+              value,
+              textAlign: TextAlign.right,
+              style: TextStyle(
+                color: valueColor,
+                fontSize: 15,
+                fontWeight: FontWeight.bold,
+              ),
+              maxLines: multiLine ? 3 : 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      ),
     );
   }
 
