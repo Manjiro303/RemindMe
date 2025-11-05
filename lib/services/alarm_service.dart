@@ -74,7 +74,13 @@ class AlarmService {
       return scheduledTime;
     }
 
-    // Handle recurring reminders
+    // Handle recurring reminders - FIXED LOGIC
+    // If no days selected, treat as all days
+    List<int> selectedDays = reminder.days.isEmpty 
+        ? List.generate(7, (index) => index) 
+        : List.from(reminder.days);
+
+    // Start with today's scheduled time
     DateTime scheduledTime = DateTime(
       now.year,
       now.month,
@@ -85,37 +91,32 @@ class AlarmService {
       0,
     );
 
-    // If no days are selected, treat as all days selected
-    List<int> selectedDays = reminder.days.isEmpty 
-        ? List.generate(7, (index) => index) 
-        : reminder.days;
+    // Check if alarm time already passed today
+    bool timePassedToday = scheduledTime.isBefore(now) || scheduledTime.isAtSameMomentAs(now);
 
-    // If the time has passed today or is now, start from tomorrow
-    if (scheduledTime.isBefore(now) || scheduledTime.isAtSameMomentAs(now)) {
-      scheduledTime = DateTime(
-        now.year,
-        now.month,
-        now.day + 1,
-        reminder.time.hour,
-        reminder.time.minute,
-        0,
-        0,
-      );
-    }
+    // Try finding next occurrence starting from today or tomorrow
+    DateTime checkDate = timePassedToday 
+        ? DateTime(now.year, now.month, now.day + 1, reminder.time.hour, reminder.time.minute, 0, 0)
+        : scheduledTime;
 
-    // Find the next valid day (check up to 7 days)
-    for (int i = 0; i < 7; i++) {
-      final dayOfWeek = (scheduledTime.weekday - 1) % 7; // Convert to 0-6 (Monday = 0)
+    // Search for next valid day (max 14 days to be safe)
+    for (int daysAhead = 0; daysAhead < 14; daysAhead++) {
+      // Calculate day of week (0 = Monday, 6 = Sunday)
+      int weekday = checkDate.weekday; // Returns 1-7 (Monday-Sunday)
+      int dayIndex = (weekday == 7) ? 6 : (weekday - 1); // Convert to 0-6
       
-      if (selectedDays.contains(dayOfWeek)) {
-        return scheduledTime;
+      print('📅 Checking day: ${checkDate.toString().split(' ')[0]}, weekday=$weekday, dayIndex=$dayIndex, selectedDays=$selectedDays');
+      
+      if (selectedDays.contains(dayIndex)) {
+        print('✅ Found valid day!');
+        return checkDate;
       }
       
       // Move to next day
-      scheduledTime = DateTime(
-        scheduledTime.year,
-        scheduledTime.month,
-        scheduledTime.day + 1,
+      checkDate = DateTime(
+        checkDate.year,
+        checkDate.month,
+        checkDate.day + 1,
         reminder.time.hour,
         reminder.time.minute,
         0,
@@ -123,7 +124,7 @@ class AlarmService {
       );
     }
 
-    // Fallback: return the calculated time
+    // Fallback (should never reach here)
     return scheduledTime;
   }
 
