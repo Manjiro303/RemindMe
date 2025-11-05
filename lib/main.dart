@@ -70,7 +70,7 @@ class _MyRemindersAppState extends State<MyRemindersApp> {
     
     print('🔔 Handling alarm: ID=$alarmId, CAPTCHA=$requiresCaptcha');
     
-    // Get the context after a frame
+    // CRITICAL: Use addPostFrameCallback to ensure we have a valid context
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final context = navigatorKey.currentContext;
       if (context != null) {
@@ -81,17 +81,21 @@ class _MyRemindersAppState extends State<MyRemindersApp> {
           reminder = provider.reminders.firstWhere(
             (r) => r.id.hashCode.abs() % 2147483647 == alarmId
           );
+          print('✅ Found reminder: ${reminder.text}, CAPTCHA: ${reminder.requiresCaptcha}');
         } catch (e) {
           try {
             reminder = provider.reminders.firstWhere(
               (r) => r.text == alarmBody
             );
+            print('✅ Found reminder by text: ${reminder.text}');
           } catch (e2) {
             print('❌ Could not find reminder');
           }
         }
         
         if (reminder != null) {
+          // Navigate to alarm detail screen immediately
+          // This will show CAPTCHA if required
           Navigator.of(context).push(
             MaterialPageRoute(
               fullscreenDialog: true,
