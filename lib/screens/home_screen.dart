@@ -128,16 +128,79 @@ class _HomeScreenState extends State<HomeScreen> {
           return Column(
             children: [
               const SizedBox(height: 16),
+              
+              // Enhanced stats card
               StatsCard(provider: provider),
-              const SizedBox(height: 16),
+              
+              const SizedBox(height: 8),
+              
+              // Quick action buttons
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: _buildQuickActionButton(
+                        icon: Icons.alarm_add,
+                        label: 'Quick Reminder',
+                        color: Colors.blue,
+                        onTap: () => _addReminder(),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _buildQuickActionButton(
+                        icon: Icons.notifications_active,
+                        label: '${provider.activeReminders} Active',
+                        color: Colors.green,
+                        onTap: () {},
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              
+              const SizedBox(height: 8),
               
               if (provider.currentFilter != 'All')
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: Chip(
-                    label: Text('Filter: ${provider.currentFilter}'),
-                    onDeleted: () => provider.setFilter('All'),
-                    deleteIcon: const Icon(Icons.close, size: 18),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).primaryColor.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: Theme.of(context).primaryColor.withOpacity(0.3),
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.filter_alt,
+                          size: 18,
+                          color: Theme.of(context).primaryColor,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Filter: ${provider.currentFilter}',
+                          style: TextStyle(
+                            color: Theme.of(context).primaryColor,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        GestureDetector(
+                          onTap: () => provider.setFilter('All'),
+                          child: Icon(
+                            Icons.close,
+                            size: 18,
+                            color: Theme.of(context).primaryColor,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
 
@@ -166,6 +229,53 @@ class _HomeScreenState extends State<HomeScreen> {
         onPressed: _addReminder,
         icon: const Icon(Icons.add),
         label: const Text('Add Reminder'),
+        elevation: 6,
+      ),
+    );
+  }
+
+  Widget _buildQuickActionButton({
+    required IconData icon,
+    required String label,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [
+              color.withOpacity(0.7),
+              color.withOpacity(0.5),
+            ],
+          ),
+          borderRadius: BorderRadius.circular(12),
+          boxShadow: [
+            BoxShadow(
+              color: color.withOpacity(0.3),
+              blurRadius: 8,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, color: Colors.white, size: 22),
+            const SizedBox(width: 8),
+            Text(
+              label,
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+                fontSize: 13,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -175,26 +285,53 @@ class _HomeScreenState extends State<HomeScreen> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(
-            Icons.notifications_none,
-            size: 100,
-            color: Colors.grey[300],
+          Container(
+            padding: const EdgeInsets.all(32),
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: Colors.grey[100],
+            ),
+            child: Icon(
+              Icons.notifications_off_outlined,
+              size: 80,
+              color: Colors.grey[400],
+            ),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 24),
           Text(
             'No reminders yet',
             style: TextStyle(
-              fontSize: 20,
-              color: Colors.grey[600],
+              fontSize: 24,
+              color: Colors.grey[700],
               fontWeight: FontWeight.bold,
             ),
           ),
-          const SizedBox(height: 8),
-          Text(
-            'Tap the + button to add your first reminder',
-            style: TextStyle(
-              fontSize: 14,
-              color: Colors.grey[500],
+          const SizedBox(height: 12),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 48),
+            child: Text(
+              'Create your first reminder to never forget important tasks again!',
+              style: TextStyle(
+                fontSize: 15,
+                color: Colors.grey[500],
+                height: 1.5,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ),
+          const SizedBox(height: 32),
+          ElevatedButton.icon(
+            onPressed: _addReminder,
+            icon: const Icon(Icons.add_circle_outline),
+            label: const Text('Create Reminder'),
+            style: ElevatedButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+              backgroundColor: const Color(0xFF33CC8C),
+              foregroundColor: Colors.white,
+              elevation: 4,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
             ),
           ),
         ],
@@ -224,22 +361,42 @@ class _HomeScreenState extends State<HomeScreen> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Delete Reminder'),
-        content: const Text('Are you sure you want to delete this reminder?'),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: Colors.orange),
+            SizedBox(width: 12),
+            Text('Delete Reminder'),
+          ],
+        ),
+        content: const Text('Are you sure you want to delete this reminder? This action cannot be undone.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
             child: const Text('Cancel'),
           ),
-          TextButton(
+          ElevatedButton(
             onPressed: () {
               context.read<ReminderProvider>().deleteReminder(id);
               Navigator.pop(context);
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Reminder deleted')),
+                const SnackBar(
+                  content: Row(
+                    children: [
+                      Icon(Icons.check_circle, color: Colors.white),
+                      SizedBox(width: 12),
+                      Text('Reminder deleted'),
+                    ],
+                  ),
+                  backgroundColor: Colors.green,
+                ),
               );
             },
-            child: const Text('Delete', style: TextStyle(color: Colors.red)),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Delete'),
           ),
         ],
       ),
