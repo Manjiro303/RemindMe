@@ -27,6 +27,17 @@ class _AlarmDetailScreenState extends State<AlarmDetailScreen> with SingleTicker
   @override
   void initState() {
     super.initState();
+    
+    // If CAPTCHA is required, show it immediately
+    if (widget.reminder.requiresCaptcha) {
+      // Show CAPTCHA after a brief delay to allow screen to build
+      Future.delayed(const Duration(milliseconds: 100), () {
+        if (mounted) {
+          setState(() => _showCaptcha = true);
+        }
+      });
+    }
+    
     _animationController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1500),
@@ -49,6 +60,7 @@ class _AlarmDetailScreenState extends State<AlarmDetailScreen> with SingleTicker
 
   @override
   Widget build(BuildContext context) {
+    // Show CAPTCHA screen if required
     if (_showCaptcha && widget.reminder.requiresCaptcha) {
       return CaptchaScreen(
         onSuccess: _handleDismissAfterCaptcha,
@@ -60,12 +72,7 @@ class _AlarmDetailScreenState extends State<AlarmDetailScreen> with SingleTicker
     final priorityColor = AppConstants.getPriorityColors()[widget.reminder.priority]!;
 
     return PopScope(
-      canPop: !widget.reminder.requiresCaptcha,
-      onPopInvokedWithResult: (didPop, result) {
-        if (didPop && !widget.reminder.requiresCaptcha) {
-          _handleDismissWithoutCaptcha();
-        }
-      },
+      canPop: false, // CRITICAL: Cannot go back without dismissing
       child: Scaffold(
         body: Container(
           decoration: BoxDecoration(
@@ -237,50 +244,44 @@ class _AlarmDetailScreenState extends State<AlarmDetailScreen> with SingleTicker
                       ),
                       const SizedBox(height: 32),
 
-                      // Improved dismiss button
-                      Container(
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(24),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(0.3),
-                              blurRadius: 20,
-                              offset: const Offset(0, 10),
-                            ),
-                          ],
-                        ),
-                        child: ElevatedButton.icon(
-                          onPressed: widget.reminder.requiresCaptcha
-                              ? () => setState(() => _showCaptcha = true)
-                              : _handleDismissWithoutCaptcha,
-                          icon: Icon(
-                            widget.reminder.requiresCaptcha ? Icons.lock_outline : Icons.check_circle_outline, 
-                            size: 28
+                      // Dismiss button (only shown if no CAPTCHA required)
+                      if (!widget.reminder.requiresCaptcha)
+                        Container(
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(24),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.3),
+                                blurRadius: 20,
+                                offset: const Offset(0, 10),
+                              ),
+                            ],
                           ),
-                          label: Text(
-                            widget.reminder.requiresCaptcha 
-                                ? 'Solve CAPTCHA to Dismiss' 
-                                : 'Dismiss Alarm',
-                            style: const TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                              letterSpacing: 0.5,
+                          child: ElevatedButton.icon(
+                            onPressed: _handleDismissWithoutCaptcha,
+                            icon: const Icon(Icons.check_circle_outline, size: 28),
+                            label: const Text(
+                              'Dismiss Alarm',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                letterSpacing: 0.5,
+                              ),
                             ),
-                          ),
-                          style: ElevatedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 32,
-                              vertical: 18,
-                            ),
-                            backgroundColor: Colors.white,
-                            foregroundColor: categoryColor,
-                            elevation: 0,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(24),
+                            style: ElevatedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 32,
+                                vertical: 18,
+                              ),
+                              backgroundColor: Colors.white,
+                              foregroundColor: categoryColor,
+                              elevation: 0,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(24),
+                              ),
                             ),
                           ),
                         ),
-                      ),
                     ],
                   ),
                 ),
