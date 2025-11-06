@@ -74,14 +74,16 @@ class AlarmService {
       return scheduledTime;
     }
 
-    // Handle recurring reminders - FIXED LOGIC
-    // If no days selected, treat as all days
+    // FIXED: Handle recurring reminders with proper day calculation
     List<int> selectedDays = reminder.days.isEmpty 
         ? List.generate(7, (index) => index) 
         : List.from(reminder.days);
 
-    // Start with today's scheduled time
-    DateTime scheduledTime = DateTime(
+    // Sort days for easier logic
+    selectedDays.sort();
+
+    // Today's alarm time
+    DateTime todayAlarm = DateTime(
       now.year,
       now.month,
       now.day,
@@ -91,41 +93,60 @@ class AlarmService {
       0,
     );
 
-    // Check if alarm time already passed today
-    bool timePassedToday = scheduledTime.isBefore(now) || scheduledTime.isAtSameMomentAs(now);
+    // Get current day of week (0 = Monday, 6 = Sunday)
+    int currentDayIndex = now.weekday == 7 ? 6 : now.weekday - 1;
 
-    // Try finding next occurrence starting from today or tomorrow
-    DateTime checkDate = timePassedToday 
-        ? DateTime(now.year, now.month, now.day + 1, reminder.time.hour, reminder.time.minute, 0, 0)
-        : scheduledTime;
+    print('🔍 Finding next alarm time...');
+    print('📅 Current day index: $currentDayIndex (${_getDayName(currentDayIndex)})');
+    print('📅 Selected days: ${selectedDays.map((d) => _getDayName(d)).join(', ')}');
+    print('⏰ Alarm time: ${reminder.time.hour}:${reminder.time.minute}');
+    print('⏰ Today alarm would be: $todayAlarm');
+    print('⏰ Time passed today: ${now.isAfter(todayAlarm)}');
 
-    // Search for next valid day (max 14 days to be safe)
-    for (int daysAhead = 0; daysAhead < 14; daysAhead++) {
-      // Calculate day of week (0 = Monday, 6 = Sunday)
-      int weekday = checkDate.weekday; // Returns 1-7 (Monday-Sunday)
-      int dayIndex = (weekday == 7) ? 6 : (weekday - 1); // Convert to 0-6
-      
-      print('📅 Checking day: ${checkDate.toString().split(' ')[0]}, weekday=$weekday, dayIndex=$dayIndex, selectedDays=$selectedDays');
-      
-      if (selectedDays.contains(dayIndex)) {
-        print('✅ Found valid day!');
-        return checkDate;
-      }
-      
-      // Move to next day
-      checkDate = DateTime(
-        checkDate.year,
-        checkDate.month,
-        checkDate.day + 1,
+    // Check if we can schedule for today
+    if (selectedDays.contains(currentDayIndex) && now.isBefore(todayAlarm)) {
+      print('✅ Scheduling for TODAY');
+      return todayAlarm;
+    }
+
+    // Find next valid day
+    for (int daysAhead = 1; daysAhead <= 7; daysAhead++) {
+      DateTime checkDate = DateTime(
+        now.year,
+        now.month,
+        now.day + daysAhead,
         reminder.time.hour,
         reminder.time.minute,
         0,
         0,
       );
+      
+      int checkDayIndex = checkDate.weekday == 7 ? 6 : checkDate.weekday - 1;
+      
+      print('🔍 Checking day $daysAhead: ${_getDayName(checkDayIndex)}');
+      
+      if (selectedDays.contains(checkDayIndex)) {
+        print('✅ Found next alarm: ${_getDayName(checkDayIndex)} at ${checkDate.toString()}');
+        return checkDate;
+      }
     }
 
-    // Fallback (should never reach here)
-    return scheduledTime;
+    // Fallback: schedule for tomorrow (should not reach here)
+    print('⚠️ Using fallback - scheduling for tomorrow');
+    return DateTime(
+      now.year,
+      now.month,
+      now.day + 1,
+      reminder.time.hour,
+      reminder.time.minute,
+      0,
+      0,
+    );
+  }
+
+  String _getDayName(int index) {
+    const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+    return days[index];
   }
 
   Future<void> cancelAlarm(String reminderId) async {
