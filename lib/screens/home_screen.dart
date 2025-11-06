@@ -161,45 +161,18 @@ class _HomeScreenState extends State<HomeScreen> {
       body: Consumer<ReminderProvider>(
         builder: (context, provider, child) {
           final reminders = provider.filteredReminders;
-          // FIXED: Check total reminders, not filtered reminders
           final hasReminders = provider.totalReminders > 0;
 
           return Column(
             children: [
               const SizedBox(height: 16),
               
+              // Always show stats
               StatsCard(provider: provider),
               
               const SizedBox(height: 8),
               
-              // Quick action buttons with correct logic
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: _buildQuickActionButton(
-                        // FIXED: When NO reminders exist, show "Create", otherwise "Add"
-                        icon: hasReminders ? Icons.add : Icons.alarm_add,
-                        label: hasReminders ? 'Add Reminder' : 'Create Reminder',
-                        color: Colors.blue,
-                        onTap: () => _addReminder(),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: _buildQuickActionButton(
-                        icon: Icons.notifications_active,
-                        label: '${provider.activeReminders} Active',
-                        color: Colors.green,
-                        onTap: () {},
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              
-              const SizedBox(height: 8),
+              // REMOVED: Quick action buttons completely
               
               if (provider.currentFilter != 'All')
                 Padding(
@@ -264,63 +237,23 @@ class _HomeScreenState extends State<HomeScreen> {
           );
         },
       ),
-      // FIXED: FAB also shows correct text
+      // FIXED: Only show FAB when reminders exist
       floatingActionButton: Consumer<ReminderProvider>(
         builder: (context, provider, child) {
           final hasReminders = provider.totalReminders > 0;
+          
+          // Only show FAB if there are reminders
+          if (!hasReminders) {
+            return const SizedBox.shrink(); // Hide FAB
+          }
+          
           return FloatingActionButton.extended(
             onPressed: _addReminder,
             icon: const Icon(Icons.add),
-            label: Text(hasReminders ? 'Add Reminder' : 'Create Reminder'),
+            label: const Text('Add Reminder'),
             elevation: 6,
           );
         },
-      ),
-    );
-  }
-
-  Widget _buildQuickActionButton({
-    required IconData icon,
-    required String label,
-    required Color color,
-    required VoidCallback onTap,
-  }) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [
-              color.withOpacity(0.7),
-              color.withOpacity(0.5),
-            ],
-          ),
-          borderRadius: BorderRadius.circular(12),
-          boxShadow: [
-            BoxShadow(
-              color: color.withOpacity(0.3),
-              blurRadius: 8,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, color: Colors.white, size: 22),
-            const SizedBox(width: 8),
-            Text(
-              label,
-              style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
-                fontSize: 13,
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }
@@ -367,20 +300,22 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
           const SizedBox(height: 32),
-          ElevatedButton.icon(
-            onPressed: _addReminder,
-            icon: const Icon(Icons.add_circle_outline),
-            label: Text(hasReminders ? 'Add Reminder' : 'Create Reminder'),
-            style: ElevatedButton.styleFrom(
-              padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
-              backgroundColor: const Color(0xFF33CC8C),
-              foregroundColor: Colors.white,
-              elevation: 4,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
+          // FIXED: Only show this button when NO reminders exist
+          if (!hasReminders)
+            ElevatedButton.icon(
+              onPressed: _addReminder,
+              icon: const Icon(Icons.add_circle_outline),
+              label: const Text('Create Reminder'),
+              style: ElevatedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+                backgroundColor: const Color(0xFF33CC8C),
+                foregroundColor: Colors.white,
+                elevation: 4,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
               ),
             ),
-          ),
         ],
       ),
     );
