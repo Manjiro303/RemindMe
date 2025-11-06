@@ -91,7 +91,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // NEW: Handle toggle with CAPTCHA protection
+  // Handle toggle with CAPTCHA protection
   Future<void> _handleReminderToggle(ReminderModel reminder) async {
     final provider = context.read<ReminderProvider>();
     
@@ -161,6 +161,7 @@ class _HomeScreenState extends State<HomeScreen> {
       body: Consumer<ReminderProvider>(
         builder: (context, provider, child) {
           final reminders = provider.filteredReminders;
+          // FIXED: Check total reminders, not filtered reminders
           final hasReminders = provider.totalReminders > 0;
 
           return Column(
@@ -171,13 +172,14 @@ class _HomeScreenState extends State<HomeScreen> {
               
               const SizedBox(height: 8),
               
-              // FIXED: Show correct button based on whether reminders exist
+              // Quick action buttons with correct logic
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 child: Row(
                   children: [
                     Expanded(
                       child: _buildQuickActionButton(
+                        // FIXED: When NO reminders exist, show "Create", otherwise "Add"
                         icon: hasReminders ? Icons.add : Icons.alarm_add,
                         label: hasReminders ? 'Add Reminder' : 'Create Reminder',
                         color: Colors.blue,
@@ -252,7 +254,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           return ReminderCard(
                             reminder: reminder,
                             onTap: () => _editReminder(reminder.id),
-                            onToggle: () => _handleReminderToggle(reminder), // UPDATED
+                            onToggle: () => _handleReminderToggle(reminder),
                             onDelete: () => _deleteReminder(reminder.id),
                           );
                         },
@@ -262,11 +264,17 @@ class _HomeScreenState extends State<HomeScreen> {
           );
         },
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _addReminder,
-        icon: const Icon(Icons.add),
-        label: const Text('Add Reminder'),
-        elevation: 6,
+      // FIXED: FAB also shows correct text
+      floatingActionButton: Consumer<ReminderProvider>(
+        builder: (context, provider, child) {
+          final hasReminders = provider.totalReminders > 0;
+          return FloatingActionButton.extended(
+            onPressed: _addReminder,
+            icon: const Icon(Icons.add),
+            label: Text(hasReminders ? 'Add Reminder' : 'Create Reminder'),
+            elevation: 6,
+          );
+        },
       ),
     );
   }
