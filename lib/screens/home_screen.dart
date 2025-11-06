@@ -8,6 +8,7 @@ import '../widgets/stats_card.dart';
 import '../utils/constants.dart';
 import 'add_edit_reminder_screen.dart';
 import 'alarm_detail_screen.dart';
+import 'captcha_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -90,6 +91,42 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  // NEW: Handle toggle with CAPTCHA protection
+  Future<void> _handleReminderToggle(ReminderModel reminder) async {
+    final provider = context.read<ReminderProvider>();
+    
+    // If alarm is being turned OFF and requires CAPTCHA, show CAPTCHA screen
+    if (reminder.enabled && reminder.requiresCaptcha) {
+      final result = await Navigator.of(context).push<bool>(
+        MaterialPageRoute(
+          fullscreenDialog: true,
+          builder: (context) => CaptchaScreen(
+            onSuccess: () {
+              Navigator.pop(context, true);
+            },
+            reminderText: reminder.text,
+          ),
+        ),
+      );
+      
+      // Only toggle if CAPTCHA was solved
+      if (result == true) {
+        await provider.toggleReminder(reminder.id);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('✅ Alarm disabled successfully'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+      }
+    } else {
+      // Normal toggle (no CAPTCHA required)
+      await provider.toggleReminder(reminder.id);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -124,25 +161,25 @@ class _HomeScreenState extends State<HomeScreen> {
       body: Consumer<ReminderProvider>(
         builder: (context, provider, child) {
           final reminders = provider.filteredReminders;
+          final hasReminders = provider.totalReminders > 0;
 
           return Column(
             children: [
               const SizedBox(height: 16),
               
-              // Enhanced stats card
               StatsCard(provider: provider),
               
               const SizedBox(height: 8),
               
-              // Quick action buttons
+              // FIXED: Show correct button based on whether reminders exist
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 child: Row(
                   children: [
                     Expanded(
                       child: _buildQuickActionButton(
-                        icon: Icons.alarm_add,
-                        label: 'Quick Reminder',
+                        icon: hasReminders ? Icons.add : Icons.alarm_add,
+                        label: hasReminders ? 'Add Reminder' : 'Create Reminder',
                         color: Colors.blue,
                         onTap: () => _addReminder(),
                       ),
@@ -206,7 +243,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
               Expanded(
                 child: reminders.isEmpty
-                    ? _buildEmptyState()
+                    ? _buildEmptyState(hasReminders)
                     : ListView.builder(
                         padding: const EdgeInsets.all(16),
                         itemCount: reminders.length,
@@ -215,7 +252,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           return ReminderCard(
                             reminder: reminder,
                             onTap: () => _editReminder(reminder.id),
-                            onToggle: () => provider.toggleReminder(reminder.id),
+                            onToggle: () => _handleReminderToggle(reminder), // UPDATED
                             onDelete: () => _deleteReminder(reminder.id),
                           );
                         },
@@ -280,7 +317,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildEmptyState() {
+  Widget _buildEmptyState(bool hasReminders) {
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -299,7 +336,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           const SizedBox(height: 24),
           Text(
-            'No reminders yet',
+            hasReminders ? 'No reminders in this category' : 'No reminders yet',
             style: TextStyle(
               fontSize: 24,
               color: Colors.grey[700],
@@ -310,7 +347,9 @@ class _HomeScreenState extends State<HomeScreen> {
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 48),
             child: Text(
-              'Create your first reminder to never forget important tasks again!',
+              hasReminders 
+                  ? 'Try selecting a different category or create a new reminder'
+                  : 'Create your first reminder to never forget important tasks again!',
               style: TextStyle(
                 fontSize: 15,
                 color: Colors.grey[500],
@@ -323,7 +362,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ElevatedButton.icon(
             onPressed: _addReminder,
             icon: const Icon(Icons.add_circle_outline),
-            label: const Text('Create Reminder'),
+            label: Text(hasReminders ? 'Add Reminder' : 'Create Reminder'),
             style: ElevatedButton.styleFrom(
               padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
               backgroundColor: const Color(0xFF33CC8C),
