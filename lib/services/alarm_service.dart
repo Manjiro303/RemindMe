@@ -15,15 +15,14 @@ class AlarmService {
       final int alarmId = reminder.id.hashCode.abs() % 2147483647;
 
       print('📅 ============ SCHEDULING ALARM ============');
-      print('📅 Alarm for: ${reminder.text}');
-      print('⏰ Current time: $now');
-      print('⏰ Scheduled time: $scheduledTime');
-      print('⏰ Time until alarm: ${scheduledTime.difference(now).inMinutes} minutes');
-      print('🆔 Alarm ID: $alarmId');
-      print('🔄 Is recurring: ${reminder.isRecurring}');
-      print('📆 Specific date: ${reminder.specificDate}');
-      print('📆 Selected days: ${reminder.days}');
-      print('🔐 Requires CAPTCHA: ${reminder.requiresCaptcha}');
+      print('📅 Alarm: ${reminder.text}');
+      print('⏰ Current: $now');
+      print('⏰ Scheduled: $scheduledTime');
+      print('⏰ Minutes until alarm: ${scheduledTime.difference(now).inMinutes}');
+      print('🆔 ID: $alarmId');
+      print('🔄 Recurring: ${reminder.isRecurring}');
+      print('📆 Days: ${reminder.days}');
+      print('🔐 CAPTCHA: ${reminder.requiresCaptcha}');
 
       if (scheduledTime.isBefore(now)) {
         print('❌ ERROR: Scheduled time is in the past!');
@@ -41,11 +40,14 @@ class AlarmService {
         soundUri: reminder.customSoundPath ?? '',
         priority: reminder.priority,
         requiresCaptcha: reminder.requiresCaptcha,
+        isRecurring: reminder.isRecurring,
+        selectedDays: reminder.isRecurring ? reminder.days : [],
+        reminderHour: reminder.time.hour,
+        reminderMinute: reminder.time.minute,
       );
 
       if (success) {
         print('✅ Alarm scheduled successfully!');
-        print('✅ Will ring in ${scheduledTime.difference(now).inMinutes} minutes');
         print('============================================');
         return true;
       } else {
@@ -70,16 +72,14 @@ class AlarmService {
         0,
         0,
       );
-      
       return scheduledTime;
     }
 
-    // FIXED: Handle recurring reminders with proper day calculation
+    // Handle recurring reminders
     List<int> selectedDays = reminder.days.isEmpty 
         ? List.generate(7, (index) => index) 
         : List.from(reminder.days);
 
-    // Sort days for easier logic
     selectedDays.sort();
 
     // Today's alarm time
@@ -93,15 +93,12 @@ class AlarmService {
       0,
     );
 
-    // Get current day of week (0 = Monday, 6 = Sunday)
+    // Get current day index (0 = Monday, 6 = Sunday)
     int currentDayIndex = now.weekday == 7 ? 6 : now.weekday - 1;
 
-    print('🔍 Finding next alarm time...');
-    print('📅 Current day index: $currentDayIndex (${_getDayName(currentDayIndex)})');
+    print('🔍 Finding next alarm...');
+    print('📅 Current day: $currentDayIndex (${_getDayName(currentDayIndex)})');
     print('📅 Selected days: ${selectedDays.map((d) => _getDayName(d)).join(', ')}');
-    print('⏰ Alarm time: ${reminder.time.hour}:${reminder.time.minute}');
-    print('⏰ Today alarm would be: $todayAlarm');
-    print('⏰ Time passed today: ${now.isAfter(todayAlarm)}');
 
     // Check if we can schedule for today
     if (selectedDays.contains(currentDayIndex) && now.isBefore(todayAlarm)) {
@@ -123,16 +120,14 @@ class AlarmService {
       
       int checkDayIndex = checkDate.weekday == 7 ? 6 : checkDate.weekday - 1;
       
-      print('🔍 Checking day $daysAhead: ${_getDayName(checkDayIndex)}');
-      
       if (selectedDays.contains(checkDayIndex)) {
-        print('✅ Found next alarm: ${_getDayName(checkDayIndex)} at ${checkDate.toString()}');
+        print('✅ Next alarm: ${_getDayName(checkDayIndex)} at $checkDate');
         return checkDate;
       }
     }
 
-    // Fallback: schedule for tomorrow (should not reach here)
-    print('⚠️ Using fallback - scheduling for tomorrow');
+    // Fallback
+    print('⚠️ Using fallback - tomorrow');
     return DateTime(
       now.year,
       now.month,
@@ -154,7 +149,7 @@ class AlarmService {
       final int alarmId = reminderId.hashCode.abs() % 2147483647;
       await _platformService.cancelNativeAlarm(alarmId);
       await _platformService.cancelNotification(alarmId);
-      print('✅ Alarm and notification cancelled for ID: $reminderId');
+      print('✅ Alarm cancelled: $reminderId');
     } catch (e) {
       print('❌ Error cancelling alarm: $e');
     }
@@ -184,9 +179,9 @@ class AlarmService {
       }
       
       await prefs.setBool('needs_reschedule', false);
-      print('✅ All alarms rescheduled successfully');
+      print('✅ All alarms rescheduled');
     } catch (e) {
-      print('❌ Error rescheduling alarms: $e');
+      print('❌ Error rescheduling: $e');
     }
   }
 
@@ -200,7 +195,7 @@ class AlarmService {
       
       print('✅ All alarms cancelled');
     } catch (e) {
-      print('❌ Error cancelling all alarms: $e');
+      print('❌ Error cancelling all: $e');
     }
   }
 }
