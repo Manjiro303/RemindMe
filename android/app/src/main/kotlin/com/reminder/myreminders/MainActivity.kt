@@ -13,6 +13,7 @@ import android.net.Uri
 import android.util.Log
 import android.app.PendingIntent
 import android.app.NotificationManager
+import android.widget.Toast
 
 class MainActivity: FlutterActivity() {
     private val CHANNEL = "com.reminder.myreminders/permissions"
@@ -22,6 +23,20 @@ class MainActivity: FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        
+        // Request exact alarm permission on startup for Android 12+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val alarmManager = getSystemService(Context.ALARM_SERVICE) as AlarmManager
+            if (!alarmManager.canScheduleExactAlarms()) {
+                Log.w(TAG, "⚠️ Exact alarm permission not granted - requesting")
+                try {
+                    val intent = Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM)
+                    startActivity(intent)
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error requesting exact alarm permission: ${e.message}")
+                }
+            }
+        }
         
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler { call, result ->
             when (call.method) {
@@ -82,11 +97,11 @@ class MainActivity: FlutterActivity() {
                         val reminderHour = call.argument<Int>("reminderHour") ?: 0
                         val reminderMinute = call.argument<Int>("reminderMinute") ?: 0
                         
-                        scheduleNativeAlarm(
+                        val success = scheduleNativeAlarm(
                             alarmId, timeMillis, title, body, soundUri, priority, 
                             requiresCaptcha, isRecurring, selectedDays, reminderHour, reminderMinute
                         )
-                        result.success(true)
+                        result.success(success)
                     } catch (e: Exception) {
                         Log.e(TAG, "❌ Error in scheduleAlarm: ${e.message}")
                         result.error("ALARM_ERROR", e.message, null)
@@ -223,22 +238,51 @@ class MainActivity: FlutterActivity() {
         selectedDays: IntArray,
         reminderHour: Int,
         reminderMinute: Int
-    ) {
+    ): Boolean {
         val alarmManager = getSystemService(Context.ALARM_SERVICE) as AlarmManager
         
-        Log.d(TAG, "📅 Scheduling alarm ID $alarmId for: $body")
-        Log.d(TAG, "   Time: ${java.util.Date(timeMillis)}")
-        Log.d(TAG, "   Recurring: $isRecurring")
+        val now = System.currentTimeMillis()
+        val scheduledDate = java.util.Date(timeMillis)
+        val currentDate = java.util.Date(now)
         
-        // Cancel existing
-        cancelNativeAlarm(alarmId)
+        Log.d(TAG, "==========================================")
+        Log.d(TAG, "📅 SCHEDULING ALARM")
+        Log.d(TAG, "==========================================")
+        Log.d(TAG, "Alarm ID: $alarmId")
+        Log.d(TAG, "Title: $title")
+        Log.d(TAG, "Body: $body")
+        Log.d(TAG, "Current time: $currentDate ($now)")
+        Log.d(TAG, "Scheduled time: $scheduledDate ($timeMillis)")
+        Log.d(TAG, "Time difference: ${(timeMillis - now) / 1000} seconds")
+        Log.d(TAG, "Recurring: $isRecurring")
+        Log.d(TAG, "Days: ${selectedDays.joinToString()}")
+        Log.d(TAG, "==========================================")
         
-        // Verify time is in future
-        if (timeMillis <= System.currentTimeMillis()) {
-            Log.e(TAG, "❌ Alarm time is in the past!")
-            return
+        // Check if time is in past
+        if (timeMillis <= now) {
+            Log.e(TAG, "❌ ERROR: Scheduled time is in the PAST!")
+            Log.e(TAG, "   Current: $now")
+            Log.e(TAG, "   Scheduled: $timeMillis")
+            Log.e(TAG, "   Difference: ${now - timeMillis} ms")
+            Toast.makeText(this, "Error: Alarm time is in the past", Toast.LENGTH_LONG).show()
+            return false
         }
         
+        // Check exact alarm permission on Android 12+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            if (!alarmManager.canScheduleExactAlarms()) {
+                Log.e(TAG, "❌ ERROR: No permission to schedule exact alarms!")
+                Toast.makeText(this, "Please grant 'Alarms & reminders' permission", Toast.LENGTH_LONG).show()
+                val intent = Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM)
+                startActivity(intent)
+                return false
+            }
+        }
+        
+        // Cancel any existing alarm with this ID first
+        cancelNativeAlarm(alarmId)
+        
+        // Create the intent
         val intent = Intent(this, AlarmReceiver::class.java).apply {
             putExtra("id", alarmId)
             putExtra("title", title)
@@ -260,32 +304,31 @@ class MainActivity: FlutterActivity() {
         )
         
         try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                if (!alarmManager.canScheduleExactAlarms()) {
-                    Log.e(TAG, "❌ Cannot schedule exact alarms - permission needed")
-                    return
-                }
-            }
+            // Use setAlarmClock for most reliable delivery
+            val alarmClockInfo = AlarmManager.AlarmClockInfo(timeMillis, pendingIntent)
+            alarmManager.setAlarmClock(alarmClockInfo, pendingIntent)
             
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                alarmManager.setExactAndAllowWhileIdle(
-                    AlarmManager.RTC_WAKEUP,
-                    timeMillis,
-                    pendingIntent
-                )
-            } else {
-                alarmManager.setExact(
-                    AlarmManager.RTC_WAKEUP,
-                    timeMillis,
-                    pendingIntent
-                )
-            }
+            Log.d(TAG, "✅ Alarm scheduled using setAlarmClock()")
+            Log.d(TAG, "   Will ring at: $scheduledDate")
+            Log.d(TAG, "==========================================")
             
-            Log.d(TAG, "✅ Alarm scheduled successfully")
+            Toast.makeText(
+                this, 
+                "✅ Alarm set for ${scheduledDate.hours}:${scheduledDate.minutes.toString().padStart(2, '0')}", 
+                Toast.LENGTH_SHORT
+            ).show()
             
+            return true
+            
+        } catch (e: SecurityException) {
+            Log.e(TAG, "❌ SecurityException: ${e.message}")
+            Toast.makeText(this, "Permission error: ${e.message}", Toast.LENGTH_LONG).show()
+            return false
         } catch (e: Exception) {
             Log.e(TAG, "❌ Error scheduling alarm: ${e.message}")
             e.printStackTrace()
+            Toast.makeText(this, "Error: ${e.message}", Toast.LENGTH_LONG).show()
+            return false
         }
     }
     
@@ -302,6 +345,7 @@ class MainActivity: FlutterActivity() {
             
             alarmManager.cancel(pendingIntent)
             pendingIntent.cancel()
+            Log.d(TAG, "✅ Cancelled alarm ID: $alarmId")
         } catch (e: Exception) {
             Log.e(TAG, "❌ Error cancelling alarm: ${e.message}")
         }
@@ -312,6 +356,7 @@ class MainActivity: FlutterActivity() {
             AlarmReceiver.stopCurrentRingtone()
             val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             notificationManager.cancel(notificationId)
+            Log.d(TAG, "✅ Stopped ringtone and cancelled notification ID: $notificationId")
         } catch (e: Exception) {
             Log.e(TAG, "❌ Error stopping ringtone: ${e.message}")
         }
