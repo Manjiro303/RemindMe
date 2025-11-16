@@ -133,17 +133,6 @@ class _HomeScreenState extends State<HomeScreen> {
       appBar: AppBar(
         title: const Text('🔔 My Reminders'),
         actions: [
-          // TEST BUTTON - Add this for debugging
-          IconButton(
-            icon: const Icon(Icons.science),
-            tooltip: 'Test Alarms',
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => const TestAlarmScreen()),
-              );
-            },
-          ),
           PopupMenuButton<String>(
             icon: const Icon(Icons.filter_list),
             onSelected: (value) {
