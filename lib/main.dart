@@ -44,14 +44,92 @@ class MyRemindersApp extends StatefulWidget {
   State<MyRemindersApp> createState() => _MyRemindersAppState();
 }
 
-class _MyRemindersAppState extends State<MyRemindersApp> {
+class _MyRemindersAppState extends State<MyRemindersApp> with WidgetsBindingObserver {
   static const platform = MethodChannel('com.reminder.myreminders/alarm');
+  static const permissionChannel = MethodChannel('com.reminder.myreminders/permissions');
   final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _setupMethodChannelListener();
+    _checkPermissions();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _checkPermissions();
+    }
+  }
+
+  Future<void> _checkPermissions() async {
+    try {
+      final canSchedule = await permissionChannel.invokeMethod('canScheduleExactAlarms');
+      if (canSchedule == false) {
+        print('⚠️ Exact alarm permission not granted');
+        // Show dialog to user
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _showPermissionDialog();
+        });
+      } else {
+        print('✅ Exact alarm permission granted');
+      }
+    } catch (e) {
+      print('Error checking permissions: $e');
+    }
+  }
+
+  void _showPermissionDialog() {
+    final context = navigatorKey.currentContext;
+    if (context == null) return;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.alarm, color: Colors.orange),
+            SizedBox(width: 12),
+            Expanded(child: Text('Permission Required')),
+          ],
+        ),
+        content: const Text(
+          'This app needs permission to schedule exact alarms. '
+          'Please enable "Alarms & reminders" in the next screen.',
+          style: TextStyle(fontSize: 16),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Later'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.pop(context);
+              try {
+                await permissionChannel.invokeMethod('requestExactAlarmPermission');
+              } catch (e) {
+                print('Error requesting permission: $e');
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.orange,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Grant Permission'),
+          ),
+        ],
+      ),
+    );
   }
 
   void _setupMethodChannelListener() {
@@ -70,7 +148,6 @@ class _MyRemindersAppState extends State<MyRemindersApp> {
     
     print('🔔 Handling alarm: ID=$alarmId, CAPTCHA=$requiresCaptcha');
     
-    // CRITICAL: Use addPostFrameCallback to ensure we have a valid context
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final context = navigatorKey.currentContext;
       if (context != null) {
@@ -81,21 +158,19 @@ class _MyRemindersAppState extends State<MyRemindersApp> {
           reminder = provider.reminders.firstWhere(
             (r) => r.id.hashCode.abs() % 2147483647 == alarmId
           );
-          print('✅ Found reminder: ${reminder.text}, CAPTCHA: ${reminder.requiresCaptcha}');
+          print('✅ Found reminder: ${reminder.text}');
         } catch (e) {
           try {
             reminder = provider.reminders.firstWhere(
               (r) => r.text == alarmBody
             );
-            print('✅ Found reminder by text: ${reminder.text}');
+            print('✅ Found reminder by text');
           } catch (e2) {
             print('❌ Could not find reminder');
           }
         }
         
         if (reminder != null) {
-          // Navigate to alarm detail screen immediately
-          // This will show CAPTCHA if required
           Navigator.of(context).push(
             MaterialPageRoute(
               fullscreenDialog: true,
