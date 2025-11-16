@@ -52,7 +52,7 @@ class AlarmReceiver : BroadcastReceiver() {
             val requiresCaptcha = intent.getBooleanExtra("requiresCaptcha", false)
             
             if (!requiresCaptcha) {
-                stopRingtone()
+                stopCurrentRingtone()
                 val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
                 notificationManager.cancel(notificationId)
                 Log.d(TAG, "✅ Notification dismissed: $notificationId")
@@ -209,7 +209,7 @@ class AlarmReceiver : BroadcastReceiver() {
     
     private fun playRingtone(context: Context, soundUri: String?, requiresCaptcha: Boolean) {
         try {
-            stopRingtone()
+            stopCurrentRingtone()
             
             val uri: Uri = when {
                 !soundUri.isNullOrEmpty() && soundUri != "null" -> {
