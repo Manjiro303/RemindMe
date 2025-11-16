@@ -239,9 +239,14 @@ class MainActivity: FlutterActivity() {
     ) {
         val alarmManager = getSystemService(Context.ALARM_SERVICE) as AlarmManager
         
-        Log.d(TAG, "📅 Scheduling native alarm:")
+        val scheduledDate = java.util.Date(timeMillis)
+        val now = java.util.Date()
+        
+        Log.d(TAG, "📅 ========== SCHEDULING NATIVE ALARM ==========")
         Log.d(TAG, "  - ID: $alarmId")
-        Log.d(TAG, "  - Time: $timeMillis")
+        Log.d(TAG, "  - Current Time: $now")
+        Log.d(TAG, "  - Scheduled Time: $scheduledDate")
+        Log.d(TAG, "  - Time Millis: $timeMillis")
         Log.d(TAG, "  - Title: $title")
         Log.d(TAG, "  - Body: $body")
         Log.d(TAG, "  - Sound: $soundUri")
@@ -249,6 +254,7 @@ class MainActivity: FlutterActivity() {
         Log.d(TAG, "  - Requires CAPTCHA: $requiresCaptcha")
         Log.d(TAG, "  - Recurring: $isRecurring")
         Log.d(TAG, "  - Days: ${selectedDays.joinToString()}")
+        Log.d(TAG, "  - Hour: $reminderHour, Minute: $reminderMinute")
         
         cancelNativeAlarm(alarmId)
         cancelNotification(alarmId)
