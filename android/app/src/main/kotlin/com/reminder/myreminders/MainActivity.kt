@@ -77,8 +77,15 @@ class MainActivity: FlutterActivity() {
                         val soundUri = call.argument<String>("soundUri") ?: ""
                         val priority = call.argument<String>("priority") ?: "Medium"
                         val requiresCaptcha = call.argument<Boolean>("requiresCaptcha") ?: false
+                        val isRecurring = call.argument<Boolean>("isRecurring") ?: false
+                        val selectedDays = call.argument<IntArray>("selectedDays") ?: intArrayOf()
+                        val reminderHour = call.argument<Int>("reminderHour") ?: 0
+                        val reminderMinute = call.argument<Int>("reminderMinute") ?: 0
                         
-                        scheduleNativeAlarm(alarmId, timeMillis, title, body, soundUri, priority, requiresCaptcha)
+                        scheduleNativeAlarm(
+                            alarmId, timeMillis, title, body, soundUri, priority, 
+                            requiresCaptcha, isRecurring, selectedDays, reminderHour, reminderMinute
+                        )
                         result.success(true)
                     } catch (e: Exception) {
                         Log.e(TAG, "Error in scheduleAlarm: ${e.message}")
@@ -224,7 +231,11 @@ class MainActivity: FlutterActivity() {
         body: String,
         soundUri: String,
         priority: String,
-        requiresCaptcha: Boolean
+        requiresCaptcha: Boolean,
+        isRecurring: Boolean,
+        selectedDays: IntArray,
+        reminderHour: Int,
+        reminderMinute: Int
     ) {
         val alarmManager = getSystemService(Context.ALARM_SERVICE) as AlarmManager
         
@@ -236,6 +247,8 @@ class MainActivity: FlutterActivity() {
         Log.d(TAG, "  - Sound: $soundUri")
         Log.d(TAG, "  - Priority: $priority")
         Log.d(TAG, "  - Requires CAPTCHA: $requiresCaptcha")
+        Log.d(TAG, "  - Recurring: $isRecurring")
+        Log.d(TAG, "  - Days: ${selectedDays.joinToString()}")
         
         cancelNativeAlarm(alarmId)
         cancelNotification(alarmId)
@@ -247,6 +260,10 @@ class MainActivity: FlutterActivity() {
             putExtra("sound", soundUri)
             putExtra("priority", priority)
             putExtra("requiresCaptcha", requiresCaptcha)
+            putExtra("isRecurring", isRecurring)
+            putExtra("selectedDays", selectedDays)
+            putExtra("reminderHour", reminderHour)
+            putExtra("reminderMinute", reminderMinute)
         }
         
         val pendingIntent = PendingIntent.getBroadcast(
