@@ -120,7 +120,9 @@ class MainActivity: FlutterActivity() {
                 "cancelNotification" -> {
                     try {
                         val notificationId = call.argument<Int>("notificationId") ?: 0
-                        stopRingtoneAndNotification(notificationId)
+                        AlarmReceiver.stopRingtone()
+                        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                        notificationManager.cancel(notificationId)
                         result.success(true)
                     } catch (e: Exception) {
                         Log.e(TAG, "❌ Error in cancelNotification: ${e.message}")
@@ -348,17 +350,6 @@ class MainActivity: FlutterActivity() {
             Log.d(TAG, "✅ Cancelled alarm ID: $alarmId")
         } catch (e: Exception) {
             Log.e(TAG, "❌ Error cancelling alarm: ${e.message}")
-        }
-    }
-    
-    private fun stopRingtoneAndNotification(notificationId: Int) {
-        try {
-            AlarmReceiver.stopCurrentRingtone()
-            val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            notificationManager.cancel(notificationId)
-            Log.d(TAG, "✅ Stopped ringtone and cancelled notification ID: $notificationId")
-        } catch (e: Exception) {
-            Log.e(TAG, "❌ Error stopping ringtone: ${e.message}")
         }
     }
     
