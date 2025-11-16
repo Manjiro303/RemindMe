@@ -157,7 +157,7 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ],
           ),
-          PopupMenuBuilder<String>(
+          PopupMenuButton<String>(
             icon: const Icon(Icons.sort),
             onSelected: (value) {
               context.read<ReminderProvider>().setSort(value);
