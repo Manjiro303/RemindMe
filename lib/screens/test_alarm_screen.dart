@@ -157,6 +157,39 @@ class _TestAlarmScreenState extends State<TestAlarmScreen> {
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
+          content: Text('✅ Test alarm created! Will ring at ${testTime.hour}:${testTime.minute.toString().padLeft(2, '0')}:${testTime.second}'),
+          duration: const Duration(seconds: 5),
+          backgroundColor: Colors.green,
+        ),
+      );
+      
+      Navigator.pop(context);
+    }
+  }
+
+  void _createTestAlarm1Minute(BuildContext context, ReminderProvider provider) async {
+    final now = DateTime.now();
+    final testTime = now.add(const Duration(minutes: 1));
+    
+    final reminder = ReminderModel(
+      id: 'test_1min_${DateTime.now().millisecondsSinceEpoch}',
+      text: '🧪 TEST: 1 minute alarm',
+      time: TimeOfDay(hour: testTime.hour, minute: testTime.minute),
+      category: 'Work',
+      priority: 'High',
+      note: 'This is a test alarm',
+      days: [],
+      enabled: true,
+      isRecurring: false,
+      specificDate: testTime,
+      requiresCaptcha: false,
+    );
+
+    await provider.addReminder(reminder);
+    
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
           content: Text('✅ Test alarm created! Will ring at ${testTime.hour}:${testTime.minute.toString().padLeft(2, '0')}'),
           duration: const Duration(seconds: 5),
           backgroundColor: Colors.blue,
@@ -193,37 +226,4 @@ class _TestAlarmScreenState extends State<TestAlarmScreen> {
       );
     }
   }
-} false,
-    );
-
-    await provider.addReminder(reminder);
-    
-    if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('✅ Test alarm created! Will ring at ${testTime.hour}:${testTime.minute.toString().padLeft(2, '0')}:${testTime.second}'),
-          duration: const Duration(seconds: 5),
-          backgroundColor: Colors.green,
-        ),
-      );
-      
-      Navigator.pop(context);
-    }
-  }
-
-  void _createTestAlarm1Minute(BuildContext context, ReminderProvider provider) async {
-    final now = DateTime.now();
-    final testTime = now.add(const Duration(minutes: 1));
-    
-    final reminder = ReminderModel(
-      id: 'test_1min_${DateTime.now().millisecondsSinceEpoch}',
-      text: '🧪 TEST: 1 minute alarm',
-      time: TimeOfDay(hour: testTime.hour, minute: testTime.minute),
-      category: 'Work',
-      priority: 'High',
-      note: 'This is a test alarm',
-      days: [],
-      enabled: true,
-      isRecurring: false,
-      specificDate: testTime,
-      requiresCaptcha:
+}
