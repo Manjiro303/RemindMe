@@ -9,6 +9,7 @@ import '../utils/constants.dart';
 import 'add_edit_reminder_screen.dart';
 import 'alarm_detail_screen.dart';
 import 'captcha_screen.dart';
+import 'test_alarm_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -133,6 +134,17 @@ class _HomeScreenState extends State<HomeScreen> {
       appBar: AppBar(
         title: const Text('🔔 My Reminders'),
         actions: [
+          // TEST BUTTON - Add this for debugging
+          IconButton(
+            icon: const Icon(Icons.science),
+            tooltip: 'Test Alarms',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const TestAlarmScreen()),
+              );
+            },
+          ),
           PopupMenuButton<String>(
             icon: const Icon(Icons.filter_list),
             onSelected: (value) {
@@ -145,7 +157,7 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ],
           ),
-          PopupMenuButton<String>(
+          PopupMenuBuilder<String>(
             icon: const Icon(Icons.sort),
             onSelected: (value) {
               context.read<ReminderProvider>().setSort(value);
@@ -171,8 +183,6 @@ class _HomeScreenState extends State<HomeScreen> {
               StatsCard(provider: provider),
               
               const SizedBox(height: 8),
-              
-              // REMOVED: Quick action buttons completely
               
               if (provider.currentFilter != 'All')
                 Padding(
@@ -237,14 +247,12 @@ class _HomeScreenState extends State<HomeScreen> {
           );
         },
       ),
-      // FIXED: Only show FAB when reminders exist
       floatingActionButton: Consumer<ReminderProvider>(
         builder: (context, provider, child) {
           final hasReminders = provider.totalReminders > 0;
           
-          // Only show FAB if there are reminders
           if (!hasReminders) {
-            return const SizedBox.shrink(); // Hide FAB
+            return const SizedBox.shrink();
           }
           
           return FloatingActionButton.extended(
@@ -300,7 +308,6 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
           const SizedBox(height: 32),
-          // FIXED: Only show this button when NO reminders exist
           if (!hasReminders)
             ElevatedButton.icon(
               onPressed: _addReminder,
