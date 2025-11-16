@@ -88,7 +88,7 @@ class MainActivity: FlutterActivity() {
                         )
                         result.success(true)
                     } catch (e: Exception) {
-                        Log.e(TAG, "Error in scheduleAlarm: ${e.message}")
+                        Log.e(TAG, "❌ Error in scheduleAlarm: ${e.message}")
                         result.error("ALARM_ERROR", e.message, null)
                     }
                 }
@@ -98,7 +98,7 @@ class MainActivity: FlutterActivity() {
                         cancelNativeAlarm(alarmId)
                         result.success(true)
                     } catch (e: Exception) {
-                        Log.e(TAG, "Error in cancelAlarm: ${e.message}")
+                        Log.e(TAG, "❌ Error in cancelAlarm: ${e.message}")
                         result.error("CANCEL_ERROR", e.message, null)
                     }
                 }
@@ -108,7 +108,7 @@ class MainActivity: FlutterActivity() {
                         stopRingtoneAndNotification(notificationId)
                         result.success(true)
                     } catch (e: Exception) {
-                        Log.e(TAG, "Error in cancelNotification: ${e.message}")
+                        Log.e(TAG, "❌ Error in cancelNotification: ${e.message}")
                         result.error("CANCEL_NOTIF_ERROR", e.message, null)
                     }
                 }
@@ -117,7 +117,7 @@ class MainActivity: FlutterActivity() {
                         AlarmReceiver.stopCurrentRingtone()
                         result.success(true)
                     } catch (e: Exception) {
-                        Log.e(TAG, "Error in stopRingtone: ${e.message}")
+                        Log.e(TAG, "❌ Error in stopRingtone: ${e.message}")
                         result.error("STOP_RINGTONE_ERROR", e.message, null)
                     }
                 }
@@ -126,7 +126,7 @@ class MainActivity: FlutterActivity() {
                         val intentData = getIntentData(intent)
                         result.success(intentData)
                     } catch (e: Exception) {
-                        Log.e(TAG, "Error getting initial intent: ${e.message}")
+                        Log.e(TAG, "❌ Error getting initial intent: ${e.message}")
                         result.success(null)
                     }
                 }
@@ -150,8 +150,6 @@ class MainActivity: FlutterActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        Log.d(TAG, "🔔 onNewIntent called with action: ${intent.action}")
-        
         if (intent.action == "ALARM_DETAIL") {
             handleAlarmDetail(intent)
         }
@@ -163,8 +161,6 @@ class MainActivity: FlutterActivity() {
         val alarmBody = intent.getStringExtra("alarm_body") ?: ""
         val alarmPriority = intent.getStringExtra("alarm_priority") ?: "Medium"
         val requiresCaptcha = intent.getBooleanExtra("requiresCaptcha", false)
-        
-        Log.d(TAG, "Opening alarm detail: $alarmTitle, CAPTCHA: $requiresCaptcha")
         
         flutterEngine?.dartExecutor?.binaryMessenger?.let { messenger ->
             MethodChannel(messenger, ALARM_CHANNEL).invokeMethod(
@@ -178,11 +174,6 @@ class MainActivity: FlutterActivity() {
                 )
             )
         }
-    }
-
-    override fun onResume() {
-        super.onResume()
-        Log.d(TAG, "onResume called")
     }
 
     private fun openAppSettings() {
@@ -210,16 +201,12 @@ class MainActivity: FlutterActivity() {
             val uri: Uri? = data?.getParcelableExtra(RingtoneManager.EXTRA_RINGTONE_PICKED_URI)
             
             if (uri != null) {
-                Log.d(TAG, "Selected ringtone: $uri")
-                
                 flutterEngine?.dartExecutor?.binaryMessenger?.let { messenger ->
                     MethodChannel(messenger, RINGTONE_CHANNEL).invokeMethod(
                         "onRingtonePicked",
                         uri.toString()
                     )
                 }
-            } else {
-                Log.d(TAG, "No ringtone selected")
             }
         }
     }
@@ -239,25 +226,18 @@ class MainActivity: FlutterActivity() {
     ) {
         val alarmManager = getSystemService(Context.ALARM_SERVICE) as AlarmManager
         
-        val scheduledDate = java.util.Date(timeMillis)
-        val now = java.util.Date()
+        Log.d(TAG, "📅 Scheduling alarm ID $alarmId for: $body")
+        Log.d(TAG, "   Time: ${java.util.Date(timeMillis)}")
+        Log.d(TAG, "   Recurring: $isRecurring")
         
-        Log.d(TAG, "📅 ========== SCHEDULING NATIVE ALARM ==========")
-        Log.d(TAG, "  - ID: $alarmId")
-        Log.d(TAG, "  - Current Time: $now")
-        Log.d(TAG, "  - Scheduled Time: $scheduledDate")
-        Log.d(TAG, "  - Time Millis: $timeMillis")
-        Log.d(TAG, "  - Title: $title")
-        Log.d(TAG, "  - Body: $body")
-        Log.d(TAG, "  - Sound: $soundUri")
-        Log.d(TAG, "  - Priority: $priority")
-        Log.d(TAG, "  - Requires CAPTCHA: $requiresCaptcha")
-        Log.d(TAG, "  - Recurring: $isRecurring")
-        Log.d(TAG, "  - Days: ${selectedDays.joinToString()}")
-        Log.d(TAG, "  - Hour: $reminderHour, Minute: $reminderMinute")
-        
+        // Cancel existing
         cancelNativeAlarm(alarmId)
-        cancelNotification(alarmId)
+        
+        // Verify time is in future
+        if (timeMillis <= System.currentTimeMillis()) {
+            Log.e(TAG, "❌ Alarm time is in the past!")
+            return
+        }
         
         val intent = Intent(this, AlarmReceiver::class.java).apply {
             putExtra("id", alarmId)
@@ -282,9 +262,7 @@ class MainActivity: FlutterActivity() {
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 if (!alarmManager.canScheduleExactAlarms()) {
-                    Log.w(TAG, "⚠️ Cannot schedule exact alarms. Requesting permission...")
-                    val permIntent = Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM)
-                    startActivity(permIntent)
+                    Log.e(TAG, "❌ Cannot schedule exact alarms - permission needed")
                     return
                 }
             }
@@ -303,11 +281,8 @@ class MainActivity: FlutterActivity() {
                 )
             }
             
-            Log.d(TAG, "✅ Native alarm scheduled successfully for ID: $alarmId")
+            Log.d(TAG, "✅ Alarm scheduled successfully")
             
-        } catch (e: SecurityException) {
-            Log.e(TAG, "❌ SecurityException: ${e.message}")
-            Log.e(TAG, "   Please grant exact alarm permission in settings")
         } catch (e: Exception) {
             Log.e(TAG, "❌ Error scheduling alarm: ${e.message}")
             e.printStackTrace()
@@ -327,8 +302,6 @@ class MainActivity: FlutterActivity() {
             
             alarmManager.cancel(pendingIntent)
             pendingIntent.cancel()
-            
-            Log.d(TAG, "✅ Native alarm cancelled for ID: $alarmId")
         } catch (e: Exception) {
             Log.e(TAG, "❌ Error cancelling alarm: ${e.message}")
         }
@@ -336,26 +309,11 @@ class MainActivity: FlutterActivity() {
     
     private fun stopRingtoneAndNotification(notificationId: Int) {
         try {
-            // Stop the ringtone first
             AlarmReceiver.stopCurrentRingtone()
-            
-            // Then cancel the notification
             val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             notificationManager.cancel(notificationId)
-            
-            Log.d(TAG, "✅ Ringtone stopped and notification cancelled for ID: $notificationId")
         } catch (e: Exception) {
-            Log.e(TAG, "❌ Error stopping ringtone and notification: ${e.message}")
-        }
-    }
-    
-    private fun cancelNotification(notificationId: Int) {
-        try {
-            val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            notificationManager.cancel(notificationId)
-            Log.d(TAG, "✅ Notification cancelled for ID: $notificationId")
-        } catch (e: Exception) {
-            Log.e(TAG, "❌ Error cancelling notification: ${e.message}")
+            Log.e(TAG, "❌ Error stopping ringtone: ${e.message}")
         }
     }
     
