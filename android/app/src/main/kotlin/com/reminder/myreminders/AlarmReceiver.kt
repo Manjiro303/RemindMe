@@ -8,14 +8,11 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.media.RingtoneManager
 import android.media.Ringtone
-import android.media.AudioManager
 import android.net.Uri
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import android.app.PendingIntent
 import android.os.PowerManager
-import android.os.VibrationEffect
-import android.os.Vibrator
 import android.app.AlarmManager
 import java.util.Calendar
 
@@ -23,310 +20,160 @@ class AlarmReceiver : BroadcastReceiver() {
     
     companion object {
         private const val TAG = "AlarmReceiver"
-        private var currentRingtone: Ringtone? = null
-        private var currentVibrator: Vibrator? = null
+        private var ringtone: Ringtone? = null
         
-        fun stopCurrentRingtone() {
-            try {
-                currentRingtone?.stop()
-                currentRingtone = null
-                currentVibrator?.cancel()
-                currentVibrator = null
-                Log.d(TAG, "🔇 Stopped ringtone and vibration")
-            } catch (e: Exception) {
-                Log.e(TAG, "Error stopping ringtone: ${e.message}")
-            }
+        fun stopRingtone() {
+            ringtone?.stop()
+            ringtone = null
         }
     }
     
     override fun onReceive(context: Context, intent: Intent) {
-        Log.d(TAG, "🔔 ==========================================")
-        Log.d(TAG, "🔔 ALARM TRIGGERED!")
-        Log.d(TAG, "🔔 ==========================================")
+        Log.d(TAG, "========================================")
+        Log.d(TAG, "🔔 ALARM FIRED!!!")
+        Log.d(TAG, "========================================")
         
-        // Handle dismiss action
-        if (intent.action == "DISMISS_ALARM") {
-            val notificationId = intent.getIntExtra("notification_id", 0)
-            val requiresCaptcha = intent.getBooleanExtra("requiresCaptcha", false)
-            
-            if (!requiresCaptcha) {
-                stopCurrentRingtone()
-                val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-                notificationManager.cancel(notificationId)
-                Log.d(TAG, "✅ Alarm dismissed: $notificationId")
-            }
+        if (intent.action == "DISMISS") {
+            stopRingtone()
             return
         }
         
-        // Acquire wake lock
-        val powerManager = context.getSystemService(Context.POWER_SERVICE) as PowerManager
-        val wakeLock = powerManager.newWakeLock(
-            PowerManager.PARTIAL_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP,
-            "RemindMe::AlarmWakeLock"
-        )
-        wakeLock.acquire(5 * 60 * 1000L) // 5 minutes
+        val wakeLock = (context.getSystemService(Context.POWER_SERVICE) as PowerManager)
+            .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "RemindMe::WakeLock")
+        wakeLock.acquire(60000)
         
         try {
             val id = intent.getIntExtra("id", 0)
             val title = intent.getStringExtra("title") ?: "Reminder"
-            val body = intent.getStringExtra("body") ?: "Time's up!"
-            val soundUri = intent.getStringExtra("sound")
-            val priority = intent.getStringExtra("priority") ?: "Medium"
-            val requiresCaptcha = intent.getBooleanExtra("requiresCaptcha", false)
-            val isRecurring = intent.getBooleanExtra("isRecurring", false)
-            val selectedDays = intent.getIntArrayExtra("selectedDays") ?: intArrayOf()
-            val reminderHour = intent.getIntExtra("reminderHour", 0)
-            val reminderMinute = intent.getIntExtra("reminderMinute", 0)
+            val body = intent.getStringExtra("body") ?: "Alarm"
+            val isRecurring = intent.getBooleanExtra("recurring", false)
+            val days = intent.getIntArrayExtra("days") ?: intArrayOf()
+            val hour = intent.getIntExtra("hour", 0)
+            val minute = intent.getIntExtra("minute", 0)
             
-            Log.d(TAG, "Alarm Details:")
-            Log.d(TAG, "  ID: $id")
-            Log.d(TAG, "  Title: $title")
-            Log.d(TAG, "  Body: $body")
-            Log.d(TAG, "  Recurring: $isRecurring")
-            Log.d(TAG, "  Days: ${selectedDays.joinToString()}")
-            Log.d(TAG, "  CAPTCHA: $requiresCaptcha")
+            Log.d(TAG, "ID: $id, Body: $body, Recurring: $isRecurring")
             
-            // Play sound and vibrate
-            playAlarmSound(context, soundUri, requiresCaptcha)
-            vibrateDevice(context, requiresCaptcha)
+            // PLAY SOUND - THIS IS THE KEY PART
+            playSound(context)
             
-            // Show notification
-            showAlarmNotification(context, id, title, body, priority, requiresCaptcha)
+            // SHOW NOTIFICATION
+            showNotification(context, id, title, body)
             
-            // Reschedule if recurring
-            if (isRecurring && selectedDays.isNotEmpty()) {
-                rescheduleRecurringAlarm(
-                    context, id, title, body, soundUri, priority,
-                    requiresCaptcha, selectedDays, reminderHour, reminderMinute
-                )
+            // RESCHEDULE IF RECURRING
+            if (isRecurring && days.isNotEmpty()) {
+                reschedule(context, id, title, body, days, hour, minute)
             }
             
-            Log.d(TAG, "✅ Alarm processed successfully")
-            Log.d(TAG, "==========================================")
-            
-        } catch (e: Exception) {
-            Log.e(TAG, "❌ Error processing alarm: ${e.message}", e)
         } finally {
-            if (wakeLock.isHeld) {
-                wakeLock.release()
-            }
+            wakeLock.release()
         }
     }
     
-    private fun playAlarmSound(context: Context, soundUri: String?, requiresCaptcha: Boolean) {
+    private fun playSound(context: Context) {
         try {
-            stopCurrentRingtone()
-            
-            // Get the alarm URI
-            val uri: Uri = if (!soundUri.isNullOrEmpty() && soundUri != "null") {
-                try {
-                    Uri.parse(soundUri)
-                } catch (e: Exception) {
-                    RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
-                }
-            } else {
-                RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
-            }
-            
-            currentRingtone = RingtoneManager.getRingtone(context, uri)
-            
-            // Set to max volume
-            val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
-            audioManager.setStreamVolume(
-                AudioManager.STREAM_ALARM,
-                audioManager.getStreamMaxVolume(AudioManager.STREAM_ALARM),
-                0
-            )
-            
-            if (requiresCaptcha) {
-                currentRingtone?.isLooping = true
-            }
-            
-            currentRingtone?.play()
-            
-            Log.d(TAG, "🎵 Playing alarm sound: $uri")
+            stopRingtone()
+            val uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM) 
+                ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
+            ringtone = RingtoneManager.getRingtone(context, uri)
+            ringtone?.play()
+            Log.d(TAG, "🎵 PLAYING SOUND: $uri")
         } catch (e: Exception) {
-            Log.e(TAG, "❌ Error playing sound: ${e.message}")
+            Log.e(TAG, "Sound error: ${e.message}")
         }
     }
     
-    private fun vibrateDevice(context: Context, requiresCaptcha: Boolean) {
-        try {
-            currentVibrator = context.getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
-            
-            val pattern = longArrayOf(0, 1000, 500, 1000, 500, 1000)
-            
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                currentVibrator?.vibrate(
-                    VibrationEffect.createWaveform(pattern, if (requiresCaptcha) 0 else -1)
-                )
-            } else {
-                @Suppress("DEPRECATION")
-                currentVibrator?.vibrate(pattern, if (requiresCaptcha) 0 else -1)
-            }
-            
-            Log.d(TAG, "📳 Vibrating device")
-        } catch (e: Exception) {
-            Log.e(TAG, "❌ Error vibrating: ${e.message}")
-        }
-    }
-    
-    private fun showAlarmNotification(
-        context: Context,
-        id: Int,
-        title: String,
-        body: String,
-        priority: String,
-        requiresCaptcha: Boolean
-    ) {
-        val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        val channelId = "alarm_channel"
+    private fun showNotification(context: Context, id: Int, title: String, body: String) {
+        val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         
-        // Create notification channel
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
-                channelId,
-                "Alarm Notifications",
-                NotificationManager.IMPORTANCE_HIGH
-            ).apply {
-                description = "Notifications for alarm reminders"
-                enableVibration(false) // We handle vibration ourselves
-                setSound(null, null) // We handle sound ourselves
-                lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
-            }
-            notificationManager.createNotificationChannel(channel)
+            nm.createNotificationChannel(
+                NotificationChannel("alarm", "Alarms", NotificationManager.IMPORTANCE_HIGH)
+            )
         }
         
-        // Create intent to open app
-        val appIntent = Intent(context, MainActivity::class.java).apply {
+        val openIntent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-            action = "ALARM_DETAIL"
-            putExtra("notification_id", id)
-            putExtra("alarm_title", title)
-            putExtra("alarm_body", body)
-            putExtra("alarm_priority", priority)
-            putExtra("requiresCaptcha", requiresCaptcha)
         }
         
-        val pendingIntent = PendingIntent.getActivity(
-            context, id, appIntent,
+        val openPi = PendingIntent.getActivity(
+            context, id, openIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         
-        // Build notification
-        val notification = NotificationCompat.Builder(context, channelId)
+        val dismissIntent = Intent(context, AlarmReceiver::class.java).apply {
+            action = "DISMISS"
+        }
+        
+        val dismissPi = PendingIntent.getBroadcast(
+            context, id + 1000, dismissIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        
+        val notification = NotificationCompat.Builder(context, "alarm")
             .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
             .setContentTitle("⏰ $title")
             .setContentText(body)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(body))
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setCategory(NotificationCompat.CATEGORY_ALARM)
-            .setAutoCancel(!requiresCaptcha)
-            .setOngoing(requiresCaptcha)
-            .setContentIntent(pendingIntent)
-            .setFullScreenIntent(pendingIntent, true)
-            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-            .setSound(null)
-            .setVibrate(null)
+            .setContentIntent(openPi)
+            .setFullScreenIntent(openPi, true)
+            .addAction(0, "Dismiss", dismissPi)
+            .setAutoCancel(true)
+            .build()
         
-        // Add dismiss button if no CAPTCHA
-        if (!requiresCaptcha) {
-            val dismissIntent = Intent(context, AlarmReceiver::class.java).apply {
-                action = "DISMISS_ALARM"
-                putExtra("notification_id", id)
-                putExtra("requiresCaptcha", false)
-            }
-            val dismissPendingIntent = PendingIntent.getBroadcast(
-                context, id + 10000, dismissIntent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-            )
-            notification.addAction(
-                android.R.drawable.ic_menu_close_clear_cancel,
-                "Dismiss",
-                dismissPendingIntent
-            )
-        }
-        
-        val builtNotification = notification.build()
-        builtNotification.flags = builtNotification.flags or android.app.Notification.FLAG_INSISTENT
-        
-        notificationManager.notify(id, builtNotification)
-        
-        Log.d(TAG, "✅ Notification shown: ID=$id")
+        nm.notify(id, notification)
+        Log.d(TAG, "✅ Notification shown")
     }
     
-    private fun rescheduleRecurringAlarm(
-        context: Context,
-        alarmId: Int,
-        title: String,
+    private fun reschedule(
+        context: Context, 
+        id: Int, 
+        title: String, 
         body: String,
-        soundUri: String?,
-        priority: String,
-        requiresCaptcha: Boolean,
-        selectedDays: IntArray,
-        hour: Int,
+        days: IntArray, 
+        hour: Int, 
         minute: Int
     ) {
         try {
-            Log.d(TAG, "🔄 Rescheduling recurring alarm...")
+            val next = findNext(days, hour, minute) ?: return
             
-            val now = Calendar.getInstance()
-            val nextAlarm = findNextAlarmTime(selectedDays, hour, minute)
+            Log.d(TAG, "🔄 Rescheduling to: ${next.time}")
             
-            if (nextAlarm == null) {
-                Log.e(TAG, "❌ Could not find next alarm time")
-                return
-            }
-            
-            Log.d(TAG, "   Next alarm: ${nextAlarm.time}")
-            
-            val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
             val intent = Intent(context, AlarmReceiver::class.java).apply {
-                putExtra("id", alarmId)
+                putExtra("id", id)
                 putExtra("title", title)
                 putExtra("body", body)
-                putExtra("sound", soundUri)
-                putExtra("priority", priority)
-                putExtra("requiresCaptcha", requiresCaptcha)
-                putExtra("isRecurring", true)
-                putExtra("selectedDays", selectedDays)
-                putExtra("reminderHour", hour)
-                putExtra("reminderMinute", minute)
+                putExtra("recurring", true)
+                putExtra("days", days)
+                putExtra("hour", hour)
+                putExtra("minute", minute)
             }
             
-            val pendingIntent = PendingIntent.getBroadcast(
-                context,
-                alarmId,
-                intent,
+            val pi = PendingIntent.getBroadcast(
+                context, id, intent,
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
             
-            // Use setAlarmClock for reliability
-            val alarmClockInfo = AlarmManager.AlarmClockInfo(nextAlarm.timeInMillis, pendingIntent)
-            alarmManager.setAlarmClock(alarmClockInfo, pendingIntent)
+            val am = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+            am.setAlarmClock(AlarmManager.AlarmClockInfo(next.timeInMillis, pi), pi)
             
-            Log.d(TAG, "✅ Recurring alarm rescheduled")
-            
+            Log.d(TAG, "✅ Rescheduled")
         } catch (e: Exception) {
-            Log.e(TAG, "❌ Error rescheduling: ${e.message}", e)
+            Log.e(TAG, "Reschedule error: ${e.message}")
         }
     }
     
-    private fun findNextAlarmTime(selectedDays: IntArray, hour: Int, minute: Int): Calendar? {
-        val now = Calendar.getInstance()
-        
-        // Try next 7 days
-        for (daysAhead in 1..7) {
-            val checkTime = Calendar.getInstance().apply {
-                add(Calendar.DAY_OF_YEAR, daysAhead)
+    private fun findNext(days: IntArray, hour: Int, minute: Int): Calendar? {
+        for (i in 1..7) {
+            val cal = Calendar.getInstance().apply {
+                add(Calendar.DAY_OF_YEAR, i)
                 set(Calendar.HOUR_OF_DAY, hour)
                 set(Calendar.MINUTE, minute)
                 set(Calendar.SECOND, 0)
                 set(Calendar.MILLISECOND, 0)
             }
             
-            // Convert to our day format (0=Mon, 6=Sun)
-            val dayIndex = when (checkTime.get(Calendar.DAY_OF_WEEK)) {
+            val dayIdx = when (cal.get(Calendar.DAY_OF_WEEK)) {
                 Calendar.MONDAY -> 0
                 Calendar.TUESDAY -> 1
                 Calendar.WEDNESDAY -> 2
@@ -337,11 +184,8 @@ class AlarmReceiver : BroadcastReceiver() {
                 else -> 0
             }
             
-            if (selectedDays.contains(dayIndex)) {
-                return checkTime
-            }
+            if (days.contains(dayIdx)) return cal
         }
-        
         return null
     }
 }
