@@ -29,6 +29,10 @@ class PlatformChannelService {
     required String soundUri,
     required String priority,
     required bool requiresCaptcha,
+    required bool isRecurring,
+    required List<int> selectedDays,
+    required int reminderHour,
+    required int reminderMinute,
   }) async {
     try {
       final result = await platform.invokeMethod('scheduleAlarm', {
@@ -39,6 +43,10 @@ class PlatformChannelService {
         'soundUri': soundUri.isNotEmpty ? soundUri : await getDefaultAlarmUri(),
         'priority': priority,
         'requiresCaptcha': requiresCaptcha,
+        'isRecurring': isRecurring,
+        'selectedDays': selectedDays,
+        'reminderHour': reminderHour,
+        'reminderMinute': reminderMinute,
       });
       return result == true;
     } catch (e) {
