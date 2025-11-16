@@ -129,7 +129,7 @@ class MainActivity: FlutterActivity() {
                 }
                 "stopRingtone" -> {
                     try {
-                        AlarmReceiver.stopCurrentRingtone()
+                        AlarmReceiver.stopRingtone()
                         result.success(true)
                     } catch (e: Exception) {
                         Log.e(TAG, "❌ Error in stopRingtone: ${e.message}")
