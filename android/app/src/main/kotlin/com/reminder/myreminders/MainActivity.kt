@@ -38,6 +38,7 @@ class MainActivity: FlutterActivity() {
             }
         }
         
+        // Permission channel setup
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler { call, result ->
             when (call.method) {
                 "openSettings" -> {
@@ -63,6 +64,7 @@ class MainActivity: FlutterActivity() {
             }
         }
         
+        // Ringtone channel setup
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, RINGTONE_CHANNEL).setMethodCallHandler { call, result ->
             when (call.method) {
                 "pickRingtone" -> {
@@ -81,6 +83,7 @@ class MainActivity: FlutterActivity() {
             }
         }
         
+        // Alarm channel setup
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, ALARM_CHANNEL).setMethodCallHandler { call, result ->
             when (call.method) {
                 "scheduleAlarm" -> {
@@ -97,6 +100,13 @@ class MainActivity: FlutterActivity() {
                         val reminderHour = call.argument<Int>("reminderHour") ?: 0
                         val reminderMinute = call.argument<Int>("reminderMinute") ?: 0
                         
+                        Log.d(TAG, "📱 Flutter requested alarm scheduling:")
+                        Log.d(TAG, "   ID: $alarmId")
+                        Log.d(TAG, "   Time: $timeMillis")
+                        Log.d(TAG, "   Recurring: $isRecurring")
+                        Log.d(TAG, "   Days: ${selectedDays.joinToString()}")
+                        Log.d(TAG, "   Hour: $reminderHour, Minute: $reminderMinute")
+                        
                         val success = scheduleNativeAlarm(
                             alarmId, timeMillis, title, body, soundUri, priority, 
                             requiresCaptcha, isRecurring, selectedDays, reminderHour, reminderMinute
@@ -104,6 +114,7 @@ class MainActivity: FlutterActivity() {
                         result.success(success)
                     } catch (e: Exception) {
                         Log.e(TAG, "❌ Error in scheduleAlarm: ${e.message}")
+                        e.printStackTrace()
                         result.error("ALARM_ERROR", e.message, null)
                     }
                 }
@@ -123,6 +134,7 @@ class MainActivity: FlutterActivity() {
                         AlarmReceiver.stopRingtone()
                         val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
                         notificationManager.cancel(notificationId)
+                        Log.d(TAG, "✅ Notification and ringtone stopped for ID: $notificationId")
                         result.success(true)
                     } catch (e: Exception) {
                         Log.e(TAG, "❌ Error in cancelNotification: ${e.message}")
@@ -132,6 +144,7 @@ class MainActivity: FlutterActivity() {
                 "stopRingtone" -> {
                     try {
                         AlarmReceiver.stopRingtone()
+                        Log.d(TAG, "✅ Ringtone stopped")
                         result.success(true)
                     } catch (e: Exception) {
                         Log.e(TAG, "❌ Error in stopRingtone: ${e.message}")
@@ -255,9 +268,12 @@ class MainActivity: FlutterActivity() {
         Log.d(TAG, "Body: $body")
         Log.d(TAG, "Current time: $currentDate ($now)")
         Log.d(TAG, "Scheduled time: $scheduledDate ($timeMillis)")
-        Log.d(TAG, "Time difference: ${(timeMillis - now) / 1000} seconds")
+        Log.d(TAG, "Time difference: ${(timeMillis - now) / 1000} seconds (${(timeMillis - now) / 60000} minutes)")
         Log.d(TAG, "Recurring: $isRecurring")
         Log.d(TAG, "Days: ${selectedDays.joinToString()}")
+        Log.d(TAG, "Hour: $reminderHour, Minute: $reminderMinute")
+        Log.d(TAG, "Priority: $priority")
+        Log.d(TAG, "Requires CAPTCHA: $requiresCaptcha")
         Log.d(TAG, "==========================================")
         
         // Check if time is in past
@@ -265,8 +281,8 @@ class MainActivity: FlutterActivity() {
             Log.e(TAG, "❌ ERROR: Scheduled time is in the PAST!")
             Log.e(TAG, "   Current: $now")
             Log.e(TAG, "   Scheduled: $timeMillis")
-            Log.e(TAG, "   Difference: ${now - timeMillis} ms")
-            Toast.makeText(this, "Error: Alarm time is in the past", Toast.LENGTH_LONG).show()
+            Log.e(TAG, "   Difference: ${now - timeMillis} ms (${(now - timeMillis) / 60000} minutes)")
+            Toast.makeText(this, "❌ Error: Alarm time is in the past", Toast.LENGTH_LONG).show()
             return false
         }
         
@@ -274,17 +290,23 @@ class MainActivity: FlutterActivity() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             if (!alarmManager.canScheduleExactAlarms()) {
                 Log.e(TAG, "❌ ERROR: No permission to schedule exact alarms!")
-                Toast.makeText(this, "Please grant 'Alarms & reminders' permission", Toast.LENGTH_LONG).show()
+                Toast.makeText(this, "⚠️ Please grant 'Alarms & reminders' permission", Toast.LENGTH_LONG).show()
                 val intent = Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM)
                 startActivity(intent)
                 return false
+            } else {
+                Log.d(TAG, "✅ Exact alarm permission granted")
             }
         }
         
         // Cancel any existing alarm with this ID first
+        Log.d(TAG, "🗑️ Cancelling any existing alarm with ID: $alarmId")
         cancelNativeAlarm(alarmId)
         
-        // Create the intent
+        // Small delay to ensure cancellation completes
+        Thread.sleep(100)
+        
+        // ✅ FIX: Create intent with CONSISTENT key names that match AlarmReceiver
         val intent = Intent(this, AlarmReceiver::class.java).apply {
             putExtra("id", alarmId)
             putExtra("title", title)
@@ -292,11 +314,19 @@ class MainActivity: FlutterActivity() {
             putExtra("sound", soundUri)
             putExtra("priority", priority)
             putExtra("requiresCaptcha", requiresCaptcha)
+            
+            // ✅ CRITICAL: Use these EXACT key names - they match AlarmReceiver now
             putExtra("isRecurring", isRecurring)
             putExtra("selectedDays", selectedDays)
             putExtra("reminderHour", reminderHour)
             putExtra("reminderMinute", reminderMinute)
         }
+        
+        Log.d(TAG, "📦 Intent created with extras:")
+        Log.d(TAG, "   isRecurring = $isRecurring")
+        Log.d(TAG, "   selectedDays = ${selectedDays.joinToString()}")
+        Log.d(TAG, "   reminderHour = $reminderHour")
+        Log.d(TAG, "   reminderMinute = $reminderMinute")
         
         val pendingIntent = PendingIntent.getBroadcast(
             this,
@@ -312,24 +342,39 @@ class MainActivity: FlutterActivity() {
             
             Log.d(TAG, "✅ Alarm scheduled using setAlarmClock()")
             Log.d(TAG, "   Will ring at: $scheduledDate")
-            Log.d(TAG, "==========================================")
+            Log.d(TAG, "   In ${(timeMillis - now) / 60000} minutes")
             
-            Toast.makeText(
-                this, 
-                "✅ Alarm set for ${scheduledDate.hours}:${scheduledDate.minutes.toString().padStart(2, '0')}", 
-                Toast.LENGTH_SHORT
-            ).show()
+            if (isRecurring) {
+                val dayNames = arrayOf("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+                val selectedDayNames = selectedDays.map { dayNames.getOrElse(it) { "?" } }.joinToString(", ")
+                Log.d(TAG, "   Type: RECURRING on days: $selectedDayNames")
+                Toast.makeText(
+                    this, 
+                    "✅ Recurring alarm set for $selectedDayNames at ${String.format("%02d:%02d", reminderHour, reminderMinute)}", 
+                    Toast.LENGTH_SHORT
+                ).show()
+            } else {
+                Log.d(TAG, "   Type: ONE-TIME")
+                Toast.makeText(
+                    this, 
+                    "✅ One-time alarm set for ${String.format("%02d:%02d", scheduledDate.hours, scheduledDate.minutes)}", 
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+            
+            Log.d(TAG, "==========================================")
             
             return true
             
         } catch (e: SecurityException) {
             Log.e(TAG, "❌ SecurityException: ${e.message}")
-            Toast.makeText(this, "Permission error: ${e.message}", Toast.LENGTH_LONG).show()
+            e.printStackTrace()
+            Toast.makeText(this, "❌ Permission error: ${e.message}", Toast.LENGTH_LONG).show()
             return false
         } catch (e: Exception) {
             Log.e(TAG, "❌ Error scheduling alarm: ${e.message}")
             e.printStackTrace()
-            Toast.makeText(this, "Error: ${e.message}", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, "❌ Error: ${e.message}", Toast.LENGTH_LONG).show()
             return false
         }
     }
@@ -350,6 +395,7 @@ class MainActivity: FlutterActivity() {
             Log.d(TAG, "✅ Cancelled alarm ID: $alarmId")
         } catch (e: Exception) {
             Log.e(TAG, "❌ Error cancelling alarm: ${e.message}")
+            e.printStackTrace()
         }
     }
     
