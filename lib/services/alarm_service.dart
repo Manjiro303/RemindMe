@@ -1,118 +1,183 @@
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter/material.dart';
 import '../models/reminder_model.dart';
-import 'platform_channel_service.dart';
-import 'storage_service.dart';
 
 class AlarmService {
-  final PlatformChannelService _platformService = PlatformChannelService();
-  final StorageService _storageService = StorageService();
+  static const platform = MethodChannel('com.reminder.myreminders/alarm');
 
+  /// Schedule an alarm - main entry point
   Future<bool> scheduleAlarm(ReminderModel reminder) async {
     try {
-      print('========================================');
-      print('📅 SCHEDULING: ${reminder.text}');
+      print('\n========================================');
+      print('📅 SCHEDULING ALARM');
+      print('Text: ${reminder.text}');
+      print('Category: ${reminder.category}');
+      print('Recurring: ${reminder.isRecurring}');
+      print('========================================\n');
+
+      // Calculate when alarm should fire
+      final DateTime alarmTime = _calculateAlarmTime(reminder);
       
-      final now = DateTime.now();
-      DateTime alarmTime;
-
-      // ONE-TIME ALARM
-      if (!reminder.isRecurring && reminder.specificDate != null) {
-        alarmTime = DateTime(
-          reminder.specificDate!.year,
-          reminder.specificDate!.month,
-          reminder.specificDate!.day,
-          reminder.time.hour,
-          reminder.time.minute,
-          0,
-        );
-      } 
-      // RECURRING ALARM
-      else {
-        alarmTime = _findNext(reminder, now);
-      }
-
-      print('⏰ Scheduled for: $alarmTime');
-      print('⏰ In ${alarmTime.difference(now).inMinutes} minutes');
-      print('========================================');
-
-      if (alarmTime.isBefore(now)) {
-        print('❌ Time is in past!');
+      if (alarmTime.isBefore(DateTime.now())) {
+        print('❌ Alarm time is in the past!');
         return false;
       }
 
-      final id = reminder.id.hashCode.abs() % 2147483647;
+      final minutesUntil = alarmTime.difference(DateTime.now()).inMinutes;
+      print('⏰ Will fire in $minutesUntil minutes');
+      print('⏰ At: $alarmTime');
 
-      await cancelAlarm(reminder.id);
-      await Future.delayed(const Duration(milliseconds: 100));
+      // Generate consistent ID
+      final alarmId = reminder.id.hashCode.abs() % 2147483647;
+      print('🆔 Alarm ID: $alarmId');
 
-      final success = await _platformService.scheduleNativeAlarm(
-        alarmId: id,
-        scheduledTime: alarmTime,
-        title: reminder.category,
-        body: reminder.text,
-        soundUri: '',
-        priority: reminder.priority,
-        requiresCaptcha: reminder.requiresCaptcha,
-        isRecurring: reminder.isRecurring,
-        selectedDays: reminder.isRecurring ? reminder.days : [],
-        reminderHour: reminder.time.hour,
-        reminderMinute: reminder.time.minute,
-      );
+      // Call native Android code
+      final result = await platform.invokeMethod('scheduleAlarm', {
+        'alarmId': alarmId,
+        'scheduledTimeMillis': alarmTime.millisecondsSinceEpoch,
+        'title': reminder.category,
+        'body': reminder.text,
+        'isRecurring': reminder.isRecurring,
+        'selectedDays': reminder.isRecurring ? reminder.days : [],
+        'reminderHour': reminder.time.hour,
+        'reminderMinute': reminder.time.minute,
+      });
 
-      print(success ? '✅ SCHEDULED' : '❌ FAILED');
-      return success;
-    } catch (e) {
-      print('❌ Error: $e');
+      print(result ? '✅ SUCCESS' : '❌ FAILED');
+      print('========================================\n');
+      
+      return result == true;
+      
+    } catch (e, stackTrace) {
+      print('❌ ERROR: $e');
+      print('Stack: $stackTrace');
       return false;
     }
   }
 
-  DateTime _findNext(ReminderModel reminder, DateTime from) {
-    final days = reminder.days.isEmpty ? [0,1,2,3,4,5,6] : reminder.days;
-    final today = from.weekday == 7 ? 6 : from.weekday - 1;
+  /// Calculate when the alarm should fire
+  DateTime _calculateAlarmTime(ReminderModel reminder) {
+    final now = DateTime.now();
     
-    // Try today first
-    final todayTime = DateTime(
-      from.year, from.month, from.day,
-      reminder.time.hour, reminder.time.minute, 0,
-    );
-    
-    if (days.contains(today) && todayTime.isAfter(from)) {
-      return todayTime;
+    // ONE-TIME ALARM
+    if (!reminder.isRecurring && reminder.specificDate != null) {
+      return DateTime(
+        reminder.specificDate!.year,
+        reminder.specificDate!.month,
+        reminder.specificDate!.day,
+        reminder.time.hour,
+        reminder.time.minute,
+        0,
+        0,
+      );
     }
     
-    // Try next 7 days
-    for (int i = 1; i <= 7; i++) {
-      final check = from.add(Duration(days: i));
-      final checkDay = check.weekday == 7 ? 6 : check.weekday - 1;
+    // RECURRING ALARM - find next occurrence
+    final days = reminder.days.isEmpty ? [0, 1, 2, 3, 4, 5, 6] : reminder.days;
+    
+    // Try today first
+    final todayAlarm = DateTime(
+      now.year,
+      now.month,
+      now.day,
+      reminder.time.hour,
+      reminder.time.minute,
+      0,
+      0,
+    );
+    
+    final todayDay = now.weekday == 7 ? 6 : now.weekday - 1;
+    
+    // If today is selected and time hasn't passed (with 1 min buffer)
+    if (days.contains(todayDay) && 
+        todayAlarm.isAfter(now.add(const Duration(minutes: 1)))) {
+      print('✓ Next occurrence: TODAY');
+      return todayAlarm;
+    }
+    
+    // Check next 7 days
+    for (int daysAhead = 1; daysAhead <= 7; daysAhead++) {
+      final checkDate = now.add(Duration(days: daysAhead));
+      final checkDay = checkDate.weekday == 7 ? 6 : checkDate.weekday - 1;
       
       if (days.contains(checkDay)) {
-        return DateTime(
-          check.year, check.month, check.day,
-          reminder.time.hour, reminder.time.minute, 0,
+        final nextAlarm = DateTime(
+          checkDate.year,
+          checkDate.month,
+          checkDate.day,
+          reminder.time.hour,
+          reminder.time.minute,
+          0,
+          0,
         );
+        
+        final dayName = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][checkDay];
+        print('✓ Next occurrence: $dayName ($daysAhead days)');
+        return nextAlarm;
       }
     }
     
-    // Fallback
-    return todayTime.add(const Duration(days: 1));
+    // Fallback - tomorrow
+    print('⚠️ Using fallback: tomorrow');
+    return todayAlarm.add(const Duration(days: 1));
   }
 
+  /// Cancel an alarm
   Future<void> cancelAlarm(String reminderId) async {
-    final id = reminderId.hashCode.abs() % 2147483647;
-    await _platformService.cancelNativeAlarm(id);
-    await _platformService.cancelNotification(id);
+    try {
+      final alarmId = reminderId.hashCode.abs() % 2147483647;
+      print('🗑️ Cancelling alarm ID: $alarmId');
+      
+      await platform.invokeMethod('cancelAlarm', {'alarmId': alarmId});
+      print('✅ Cancelled');
+      
+    } catch (e) {
+      print('❌ Error cancelling: $e');
+    }
   }
 
-  Future<void> rescheduleAllAlarms() async {
-    final prefs = await SharedPreferences.getInstance();
-    if (prefs.getBool('needs_reschedule') != true) return;
-    
-    final reminders = await _storageService.loadReminders();
-    for (var r in reminders) {
-      if (r.enabled) await scheduleAlarm(r);
+  /// Stop the ringtone
+  Future<void> stopRingtone() async {
+    try {
+      await platform.invokeMethod('stopRingtone');
+    } catch (e) {
+      print('Error stopping ringtone: $e');
     }
+  }
+
+  /// Check if we can schedule exact alarms
+  Future<bool> canScheduleExactAlarms() async {
+    try {
+      final result = await platform.invokeMethod('canScheduleExactAlarms');
+      return result == true;
+    } catch (e) {
+      print('Error checking permission: $e');
+      return false;
+    }
+  }
+
+  /// Request exact alarm permission
+  Future<void> requestPermission() async {
+    try {
+      await platform.invokeMethod('requestPermission');
+    } catch (e) {
+      print('Error requesting permission: $e');
+    }
+  }
+
+  /// Test alarm (fires in 1 minute)
+  Future<bool> testAlarm(ReminderModel reminder) async {
+    print('\n🧪 TESTING ALARM - Will fire in 1 minute\n');
     
-    await prefs.setBool('needs_reschedule', false);
+    final testReminder = reminder.copyWith(
+      isRecurring: false,
+      specificDate: DateTime.now(),
+      time: TimeOfDay(
+        hour: DateTime.now().hour,
+        minute: DateTime.now().minute + 1,
+      ),
+    );
+    
+    return await scheduleAlarm(testReminder);
   }
 }
