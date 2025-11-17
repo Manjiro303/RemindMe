@@ -47,7 +47,7 @@ class AlarmReceiver : BroadcastReceiver() {
         // Acquire wake lock to ensure processing completes
         val powerManager = context.getSystemService(Context.POWER_SERVICE) as PowerManager
         val wakeLock = powerManager.newWakeLock(
-            PowerManager.PARTIAL_WAKE_LOCK,
+            PowerManager.PARTIAL_WAKE_LOCK or PowerManager.ON_AFTER_RELEASE,
             "RemindMe::AlarmWakeLock"
         )
         wakeLock.acquire(60000) // 60 seconds max
@@ -70,19 +70,22 @@ class AlarmReceiver : BroadcastReceiver() {
             Log.d(TAG, "  Days: ${days.joinToString()}")
             Log.d(TAG, "  Time: $hour:$minute")
             
-            // 1. Play sound immediately
-            playSound(context)
-            
-            // 2. Show notification
-            showNotification(context, id, title, body)
-            
-            // 3. Handle recurring alarms
+            // 1. FIRST: Schedule next occurrence for recurring alarms BEFORE doing anything else
+            // This ensures the alarm persists even if notification or sound fails
             if (isRecurring && days.isNotEmpty()) {
-                Log.d(TAG, "🔄 Scheduling next occurrence...")
+                Log.d(TAG, "🔄 Scheduling NEXT occurrence IMMEDIATELY...")
                 scheduleNextAlarm(context, id, title, body, days, hour, minute)
             } else {
                 Log.d(TAG, "⏹️ One-time alarm - not rescheduling")
+                // Remove from saved alarms for one-time alarms
+                removeAlarmFromPrefs(context, id)
             }
+            
+            // 2. Play sound
+            playSound(context)
+            
+            // 3. Show notification
+            showNotification(context, id, title, body)
             
             Log.d(TAG, "✅ Alarm processing complete")
             
@@ -99,7 +102,7 @@ class AlarmReceiver : BroadcastReceiver() {
         try {
             stopRingtone() // Stop any existing ringtone
             
-            // Get alarm sound URI
+            // Get alarm sound URI with fallback chain
             var uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
             if (uri == null) {
                 uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
@@ -245,6 +248,9 @@ class AlarmReceiver : BroadcastReceiver() {
             )
             alarmManager.setAlarmClock(alarmClockInfo, pendingIntent)
             
+            // IMPORTANT: Save alarm info to SharedPreferences for boot recovery
+            saveAlarmToPrefs(context, id, title, body, days, hour, minute)
+            
             Log.d(TAG, "✅ Next alarm scheduled successfully")
             
         } catch (e: Exception) {
@@ -259,8 +265,18 @@ class AlarmReceiver : BroadcastReceiver() {
         }
         
         val now = Calendar.getInstance()
+        val currentDay = when (now.get(Calendar.DAY_OF_WEEK)) {
+            Calendar.MONDAY -> 0
+            Calendar.TUESDAY -> 1
+            Calendar.WEDNESDAY -> 2
+            Calendar.THURSDAY -> 3
+            Calendar.FRIDAY -> 4
+            Calendar.SATURDAY -> 5
+            Calendar.SUNDAY -> 6
+            else -> 0
+        }
         
-        // Check next 8 days (including today if time hasn't passed yet)
+        // Check next 8 days
         for (daysToAdd in 0..7) {
             val candidate = Calendar.getInstance().apply {
                 add(Calendar.DAY_OF_YEAR, daysToAdd)
@@ -270,13 +286,7 @@ class AlarmReceiver : BroadcastReceiver() {
                 set(Calendar.MILLISECOND, 0)
             }
             
-            // Skip if time is in the past
-            if (candidate.timeInMillis <= now.timeInMillis) {
-                continue
-            }
-            
-            // Convert day of week to our format (Mon=0, Sun=6)
-            val dayOfWeek = when (candidate.get(Calendar.DAY_OF_WEEK)) {
+            val candidateDay = when (candidate.get(Calendar.DAY_OF_WEEK)) {
                 Calendar.MONDAY -> 0
                 Calendar.TUESDAY -> 1
                 Calendar.WEDNESDAY -> 2
@@ -284,16 +294,79 @@ class AlarmReceiver : BroadcastReceiver() {
                 Calendar.FRIDAY -> 4
                 Calendar.SATURDAY -> 5
                 Calendar.SUNDAY -> 6
-                else -> -1
+                else -> 0
             }
             
-            if (days.contains(dayOfWeek)) {
-                Log.d(TAG, "   ✓ Found next occurrence: ${candidate.time} (day $dayOfWeek)")
+            // Skip if time is in the past (add small buffer of 5 seconds)
+            if (candidate.timeInMillis <= now.timeInMillis + 5000) {
+                continue
+            }
+            
+            if (days.contains(candidateDay)) {
+                Log.d(TAG, "   ✓ Found next occurrence: ${candidate.time} (day $candidateDay)")
                 return candidate
             }
         }
         
         Log.e(TAG, "Could not find next occurrence in next 8 days")
         return null
+    }
+    
+    // Save alarm info for boot recovery
+    private fun saveAlarmToPrefs(
+        context: Context,
+        id: Int,
+        title: String,
+        body: String,
+        days: IntArray,
+        hour: Int,
+        minute: Int
+    ) {
+        try {
+            val prefs = context.getSharedPreferences("alarm_data", Context.MODE_PRIVATE)
+            val editor = prefs.edit()
+            
+            // Store each alarm with its ID as key prefix
+            editor.putString("alarm_${id}_title", title)
+            editor.putString("alarm_${id}_body", body)
+            editor.putString("alarm_${id}_days", days.joinToString(","))
+            editor.putInt("alarm_${id}_hour", hour)
+            editor.putInt("alarm_${id}_minute", minute)
+            
+            // Add to list of active alarm IDs
+            val alarmIds = prefs.getStringSet("active_alarm_ids", mutableSetOf()) ?: mutableSetOf()
+            val newIds = alarmIds.toMutableSet()
+            newIds.add(id.toString())
+            editor.putStringSet("active_alarm_ids", newIds)
+            
+            editor.apply()
+            Log.d(TAG, "✅ Alarm data saved to prefs")
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ Error saving alarm to prefs", e)
+        }
+    }
+    
+    // Remove alarm info when it's a one-time alarm that has fired
+    private fun removeAlarmFromPrefs(context: Context, id: Int) {
+        try {
+            val prefs = context.getSharedPreferences("alarm_data", Context.MODE_PRIVATE)
+            val editor = prefs.edit()
+            
+            editor.remove("alarm_${id}_title")
+            editor.remove("alarm_${id}_body")
+            editor.remove("alarm_${id}_days")
+            editor.remove("alarm_${id}_hour")
+            editor.remove("alarm_${id}_minute")
+            
+            val alarmIds = prefs.getStringSet("active_alarm_ids", mutableSetOf()) ?: mutableSetOf()
+            val newIds = alarmIds.toMutableSet()
+            newIds.remove(id.toString())
+            editor.putStringSet("active_alarm_ids", newIds)
+            
+            editor.apply()
+            Log.d(TAG, "✅ One-time alarm removed from prefs")
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ Error removing alarm from prefs", e)
+        }
     }
 }
