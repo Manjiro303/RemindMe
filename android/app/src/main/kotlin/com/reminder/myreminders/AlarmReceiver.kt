@@ -51,7 +51,8 @@ class AlarmReceiver : BroadcastReceiver() {
             PowerManager.ON_AFTER_RELEASE,
             "RemindMe::FullWakeLock"
         )
-        wakeLock.acquire(60000)
+        // Hold the lock for 60 seconds to ensure everything finishes
+        wakeLock.acquire(60000) 
         
         try {
             val id = intent.getIntExtra("id", 0)
@@ -179,6 +180,7 @@ class AlarmReceiver : BroadcastReceiver() {
                 set(Calendar.MILLISECOND, 0)
             }
             
+            // Allow for a 30-second window to prevent re-scheduling an alarm that just triggered
             if (check.timeInMillis <= now.timeInMillis + 30000) {
                 continue
             }
@@ -214,6 +216,10 @@ class AlarmReceiver : BroadcastReceiver() {
                 ).apply {
                     description = "Alarm notifications"
                     enableVibration(true)
+                    // CRITICAL FIX 1: Bypass Do Not Disturb mode for alarms
+                    setBypassDnd(true) 
+                    // CRITICAL FIX 2: Ensure visibility on lock screen
+                    lockscreenVisibility = NotificationCompat.VISIBILITY_PUBLIC 
                     setSound(
                         RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM),
                         null
@@ -224,8 +230,8 @@ class AlarmReceiver : BroadcastReceiver() {
             
             val openIntent = Intent(context, MainActivity::class.java).apply {
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or 
-                       Intent.FLAG_ACTIVITY_CLEAR_TOP or
-                       Intent.FLAG_ACTIVITY_SINGLE_TOP
+                    Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                    Intent.FLAG_ACTIVITY_SINGLE_TOP
                 action = "OPEN_ALARM"
                 putExtra("alarm_id", id)
                 putExtra("alarm_body", body)
@@ -258,7 +264,8 @@ class AlarmReceiver : BroadcastReceiver() {
                 .setAutoCancel(false)
                 .setOngoing(true)
                 .setVibrate(longArrayOf(0, 1000, 500, 1000, 500, 1000))
-                .setSound(RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM))
+                // The sound is handled by playAlarmSound() manually for robustness.
+                // .setSound(RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)) 
                 .setContentIntent(openPendingIntent)
                 .setFullScreenIntent(openPendingIntent, true)
                 .addAction(0, "Dismiss", dismissPendingIntent)
@@ -282,7 +289,8 @@ class AlarmReceiver : BroadcastReceiver() {
             
             if (uri != null) {
                 ringtone = RingtoneManager.getRingtone(context, uri)
-                ringtone?.play()
+                // Use a non-deprecated API if possible, but play() is standard
+                ringtone?.play() 
                 Log.d(TAG, "🎵 Sound playing")
             }
         } catch (e: Exception) {
