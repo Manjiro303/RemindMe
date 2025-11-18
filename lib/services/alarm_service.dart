@@ -165,6 +165,13 @@ class AlarmService {
     }
   }
 
+  /// Reschedule all alarms (called after boot or app restart)
+  Future<void> rescheduleAllAlarms() async {
+    // This method is intentionally empty for the simplified version
+    // Boot recovery is handled by native BootReceiver
+    print('ℹ️ Alarm rescheduling handled by native BootReceiver');
+  }
+
   /// Test alarm (fires in 1 minute)
   Future<bool> testAlarm(ReminderModel reminder) async {
     print('\n🧪 TESTING ALARM - Will fire in 1 minute\n');
