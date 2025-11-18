@@ -3,24 +3,11 @@ import 'package:flutter/services.dart';
 class PlatformChannelService {
   static final PlatformChannelService _instance = PlatformChannelService._internal();
   factory PlatformChannelService() => _instance;
-  PlatformChannelService._internal() {
-    _setupRingtoneListener();
-  }
+  PlatformChannelService._internal();
 
   static const platform = MethodChannel('com.reminder.myreminders/alarm');
-  static const ringtoneChannel = MethodChannel('com.reminder.myreminders/ringtone');
 
-  String? _selectedRingtoneUri;
-
-  void _setupRingtoneListener() {
-    ringtoneChannel.setMethodCallHandler((call) async {
-      if (call.method == 'onRingtonePicked') {
-        _selectedRingtoneUri = call.arguments as String?;
-        print('🎵 Ringtone selected: $_selectedRingtoneUri');
-      }
-    });
-  }
-
+  /// Schedule a native alarm
   Future<bool> scheduleNativeAlarm({
     required int alarmId,
     required DateTime scheduledTime,
@@ -40,7 +27,7 @@ class PlatformChannelService {
         'scheduledTimeMillis': scheduledTime.millisecondsSinceEpoch,
         'title': title,
         'body': body,
-        'soundUri': soundUri.isNotEmpty ? soundUri : await getDefaultAlarmUri(),
+        'soundUri': soundUri,
         'priority': priority,
         'requiresCaptcha': requiresCaptcha,
         'isRecurring': isRecurring,
@@ -55,6 +42,7 @@ class PlatformChannelService {
     }
   }
 
+  /// Cancel a native alarm
   Future<void> cancelNativeAlarm(int alarmId) async {
     try {
       await platform.invokeMethod('cancelAlarm', {'alarmId': alarmId});
@@ -64,46 +52,52 @@ class PlatformChannelService {
     }
   }
 
+  /// Cancel notification
   Future<void> cancelNotification(int notificationId) async {
     try {
-      await platform.invokeMethod('cancelNotification', {'notificationId': notificationId});
+      await platform.invokeMethod('stopRingtone');
       print('✅ Notification cancelled for ID: $notificationId');
     } catch (e) {
       print('❌ Error cancelling notification: $e');
     }
   }
 
-  Future<void> pickRingtone() async {
+  /// Stop ringtone
+  Future<void> stopRingtone() async {
     try {
-      await ringtoneChannel.invokeMethod('pickRingtone');
+      await platform.invokeMethod('stopRingtone');
     } catch (e) {
-      print('❌ Error picking ringtone: $e');
+      print('❌ Error stopping ringtone: $e');
     }
   }
 
+  /// Check if can schedule exact alarms
+  Future<bool> canScheduleExactAlarms() async {
+    try {
+      final result = await platform.invokeMethod('canScheduleExactAlarms');
+      return result == true;
+    } catch (e) {
+      print('❌ Error checking exact alarm permission: $e');
+      return false;
+    }
+  }
+
+  /// Request exact alarm permission
+  Future<void> requestExactAlarmPermission() async {
+    try {
+      await platform.invokeMethod('requestPermission');
+    } catch (e) {
+      print('❌ Error requesting permission: $e');
+    }
+  }
+
+  /// Get default alarm URI (placeholder for compatibility)
   Future<String> getDefaultAlarmUri() async {
-    try {
-      final uri = await ringtoneChannel.invokeMethod('getDefaultAlarmUri');
-      return uri as String? ?? '';
-    } catch (e) {
-      print('❌ Error getting default alarm URI: $e');
-      return '';
-    }
+    return '';
   }
 
+  /// Get default notification URI (placeholder for compatibility)
   Future<String> getDefaultNotificationUri() async {
-    try {
-      final uri = await ringtoneChannel.invokeMethod('getDefaultNotificationUri');
-      return uri as String? ?? '';
-    } catch (e) {
-      print('❌ Error getting default notification URI: $e');
-      return '';
-    }
-  }
-
-  String? get selectedRingtoneUri => _selectedRingtoneUri;
-  
-  void clearSelectedRingtone() {
-    _selectedRingtoneUri = null;
+    return '';
   }
 }
