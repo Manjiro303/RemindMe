@@ -56,7 +56,6 @@ class MainActivity: FlutterActivity() {
             val alarmManager = getSystemService(Context.ALARM_SERVICE) as AlarmManager
             if (!alarmManager.canScheduleExactAlarms()) {
                 Log.w(TAG, "⚠️ Exact alarm permission not granted - will request")
-                // Don't auto-request, let user trigger it
             } else {
                 Log.d(TAG, "✅ Exact alarm permission granted")
             }
@@ -130,13 +129,11 @@ class MainActivity: FlutterActivity() {
             // Use different methods based on Android version
             when {
                 Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
-                    // Android 12+ - Use setAlarmClock for visibility
                     val info = AlarmManager.AlarmClockInfo(timeMillis, pendingIntent)
                     alarmManager.setAlarmClock(info, pendingIntent)
                     Log.d(TAG, "✅ Using setAlarmClock (Android 12+)")
                 }
                 Build.VERSION.SDK_INT >= Build.VERSION_CODES.M -> {
-                    // Android 6+ - Use setExactAndAllowWhileIdle
                     alarmManager.setExactAndAllowWhileIdle(
                         AlarmManager.RTC_WAKEUP,
                         timeMillis,
@@ -145,7 +142,6 @@ class MainActivity: FlutterActivity() {
                     Log.d(TAG, "✅ Using setExactAndAllowWhileIdle (Android 6-11)")
                 }
                 else -> {
-                    // Android 5 and below - Use setExact
                     alarmManager.setExact(
                         AlarmManager.RTC_WAKEUP,
                         timeMillis,
@@ -206,7 +202,6 @@ class MainActivity: FlutterActivity() {
         val prefs = getSharedPreferences("RemindMeAlarms", Context.MODE_PRIVATE)
         val editor = prefs.edit()
         
-        // Save alarm details
         editor.putString("alarm_${id}_title", title)
         editor.putString("alarm_${id}_body", body)
         editor.putBoolean("alarm_${id}_recurring", isRecurring)
@@ -214,7 +209,6 @@ class MainActivity: FlutterActivity() {
         editor.putInt("alarm_${id}_hour", hour)
         editor.putInt("alarm_${id}_minute", minute)
         
-        // Add to active IDs list
         val ids = prefs.getStringSet("active_ids", mutableSetOf()) ?: mutableSetOf()
         val newIds = ids.toMutableSet()
         newIds.add(id.toString())
