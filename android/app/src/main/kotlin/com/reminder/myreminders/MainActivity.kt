@@ -11,11 +11,11 @@ import android.content.Context
 import android.util.Log
 import android.app.PendingIntent
 import android.widget.Toast
-import java.util.Calendar
 
 class MainActivity: FlutterActivity() {
     private val CHANNEL = "com.reminder.myreminders/alarm"
     private val TAG = "MainActivity"
+    private var methodChannel: MethodChannel? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -23,39 +23,76 @@ class MainActivity: FlutterActivity() {
         Log.d(TAG, "🚀 Configuring Flutter Engine")
         checkAndRequestPermissions()
         
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL)
-            .setMethodCallHandler { call, result ->
-                when (call.method) {
-                    "scheduleAlarm" -> {
-                        val success = scheduleAlarm(call.arguments as Map<String, Any>)
-                        result.success(success)
-                    }
-                    "cancelAlarm" -> {
-                        val alarmId = call.argument<Int>("alarmId") ?: 0
-                        cancelAlarm(alarmId)
-                        result.success(true)
-                    }
-                    "stopRingtone" -> {
-                        AlarmReceiver.stopRingtone()
-                        result.success(true)
-                    }
-                    "canScheduleExactAlarms" -> {
-                        result.success(canScheduleExactAlarms())
-                    }
-                    "requestPermission" -> {
-                        requestExactAlarmPermission()
-                        result.success(null)
-                    }
-                    else -> result.notImplemented()
+        methodChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL)
+        methodChannel?.setMethodCallHandler { call, result ->
+            when (call.method) {
+                "scheduleAlarm" -> {
+                    val success = scheduleAlarm(call.arguments as Map<String, Any>)
+                    result.success(success)
                 }
+                "cancelAlarm" -> {
+                    val alarmId = call.argument<Int>("alarmId") ?: 0
+                    cancelAlarm(alarmId)
+                    result.success(true)
+                }
+                "stopRingtone" -> {
+                    AlarmReceiver.stopRingtone()
+                    result.success(true)
+                }
+                "canScheduleExactAlarms" -> {
+                    result.success(canScheduleExactAlarms())
+                }
+                "requestPermission" -> {
+                    requestExactAlarmPermission()
+                    result.success(null)
+                }
+                else -> result.notImplemented()
             }
+        }
+        
+        // CRITICAL FIX: Handle initial intent
+        handleIntent(intent)
+    }
+    
+    // CRITICAL FIX: Handle new intents when app is already running
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleIntent(intent)
+    }
+    
+    // CRITICAL FIX: Check for pending alarm intent on resume
+    override fun onResume() {
+        super.onResume()
+        handleIntent(intent)
+    }
+    
+    // CRITICAL FIX: Method to handle alarm notification clicks
+    private fun handleIntent(intent: Intent?) {
+        if (intent?.action == "OPEN_ALARM") {
+            val notificationId = intent.getIntExtra("notification_id", 0)
+            val alarmBody = intent.getStringExtra("alarm_body") ?: ""
+            
+            Log.d(TAG, "📱 Opening alarm detail screen")
+            Log.d(TAG, "Notification ID: $notificationId")
+            Log.d(TAG, "Alarm Body: $alarmBody")
+            
+            // Send to Flutter via method channel
+            methodChannel?.invokeMethod("onAlarmDetail", mapOf(
+                "notification_id" to notificationId,
+                "alarm_body" to alarmBody
+            ))
+            
+            // Clear the action so it doesn't trigger again
+            intent.action = null
+        }
     }
     
     private fun checkAndRequestPermissions() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             val alarmManager = getSystemService(Context.ALARM_SERVICE) as AlarmManager
             if (!alarmManager.canScheduleExactAlarms()) {
-                Log.w(TAG, "⚠️ Exact alarm permission not granted - will request")
+                Log.w(TAG, "⚠️ Exact alarm permission not granted")
             } else {
                 Log.d(TAG, "✅ Exact alarm permission granted")
             }
@@ -83,7 +120,6 @@ class MainActivity: FlutterActivity() {
             Log.d(TAG, "Days: ${selectedDays.joinToString()}")
             Log.d(TAG, "========================================")
             
-            // Check permission
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 val am = getSystemService(Context.ALARM_SERVICE) as AlarmManager
                 if (!am.canScheduleExactAlarms()) {
@@ -94,7 +130,6 @@ class MainActivity: FlutterActivity() {
                 }
             }
             
-            // Validate time
             val now = System.currentTimeMillis()
             if (timeMillis <= now) {
                 Log.e(TAG, "❌ Time is in the past!")
@@ -102,11 +137,9 @@ class MainActivity: FlutterActivity() {
                 return false
             }
             
-            // Cancel existing
             cancelAlarm(alarmId)
             Thread.sleep(100)
             
-            // Create intent
             val intent = Intent(this, AlarmReceiver::class.java).apply {
                 putExtra("id", alarmId)
                 putExtra("title", title)
@@ -126,7 +159,6 @@ class MainActivity: FlutterActivity() {
             
             val alarmManager = getSystemService(Context.ALARM_SERVICE) as AlarmManager
             
-            // Use different methods based on Android version
             when {
                 Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
                     val info = AlarmManager.AlarmClockInfo(timeMillis, pendingIntent)
@@ -151,7 +183,6 @@ class MainActivity: FlutterActivity() {
                 }
             }
             
-            // Save to preferences for boot recovery
             saveAlarmData(alarmId, title, body, isRecurring, selectedDays, reminderHour, reminderMinute)
             
             val minutesUntil = (timeMillis - now) / 60000
@@ -181,7 +212,6 @@ class MainActivity: FlutterActivity() {
             alarmManager.cancel(pendingIntent)
             pendingIntent.cancel()
             
-            // Remove from saved data
             removeAlarmData(alarmId)
             
             Log.d(TAG, "✅ Cancelled alarm: $alarmId")
