@@ -55,7 +55,7 @@ class AlarmService {
     }
   }
 
-  /// Calculate when the alarm should fire
+  /// Calculate when the alarm should fire - FIXED TIMING
   DateTime _calculateAlarmTime(ReminderModel reminder) {
     final now = DateTime.now();
     
@@ -88,9 +88,9 @@ class AlarmService {
     
     final todayDay = now.weekday == 7 ? 6 : now.weekday - 1;
     
-    // If today is selected and time hasn't passed (with 1 min buffer)
+    // CRITICAL FIX: Reduced buffer from 1 minute to 10 seconds
     if (days.contains(todayDay) && 
-        todayAlarm.isAfter(now.add(const Duration(minutes: 1)))) {
+        todayAlarm.isAfter(now.add(const Duration(seconds: 10)))) {
       print('✓ Next occurrence: TODAY');
       return todayAlarm;
     }
@@ -167,8 +167,6 @@ class AlarmService {
 
   /// Reschedule all alarms (called after boot or app restart)
   Future<void> rescheduleAllAlarms() async {
-    // This method is intentionally empty for the simplified version
-    // Boot recovery is handled by native BootReceiver
     print('ℹ️ Alarm rescheduling handled by native BootReceiver');
   }
 
