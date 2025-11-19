@@ -132,6 +132,7 @@ class BootReceiver : BroadcastReceiver() {
         }
     }
     
+    // CRITICAL FIX: Changed from 30000 to 10000
     private fun findNext(days: IntArray, hour: Int, minute: Int): Calendar? {
         if (days.isEmpty()) return null
         
@@ -146,7 +147,8 @@ class BootReceiver : BroadcastReceiver() {
                 set(Calendar.MILLISECOND, 0)
             }
             
-            if (check.timeInMillis <= now.timeInMillis + 30000) {
+            // CRITICAL FIX: Changed from 30000 to 10000
+            if (check.timeInMillis <= now.timeInMillis + 10000) {
                 continue
             }
             
