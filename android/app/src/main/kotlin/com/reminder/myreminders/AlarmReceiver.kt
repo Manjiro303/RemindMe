@@ -51,8 +51,7 @@ class AlarmReceiver : BroadcastReceiver() {
             PowerManager.ON_AFTER_RELEASE,
             "RemindMe::FullWakeLock"
         )
-        // Hold the lock for 60 seconds to ensure everything finishes
-        wakeLock.acquire(60000) 
+        wakeLock.acquire(60000)
         
         try {
             val id = intent.getIntExtra("id", 0)
@@ -166,6 +165,7 @@ class AlarmReceiver : BroadcastReceiver() {
         }
     }
     
+    // CRITICAL FIX: Changed from 30000 to 10000
     private fun findNextOccurrence(days: IntArray, hour: Int, minute: Int): Calendar? {
         if (days.isEmpty()) return null
         
@@ -180,8 +180,8 @@ class AlarmReceiver : BroadcastReceiver() {
                 set(Calendar.MILLISECOND, 0)
             }
             
-            // Allow for a 30-second window to prevent re-scheduling an alarm that just triggered
-            if (check.timeInMillis <= now.timeInMillis + 30000) {
+            // CRITICAL FIX: Changed from 30000 to 10000
+            if (check.timeInMillis <= now.timeInMillis + 10000) {
                 continue
             }
             
@@ -204,6 +204,7 @@ class AlarmReceiver : BroadcastReceiver() {
         return null
     }
     
+    // CRITICAL FIX: Updated intent extras
     private fun showFullScreenNotification(context: Context, id: Int, title: String, body: String) {
         try {
             val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -216,10 +217,8 @@ class AlarmReceiver : BroadcastReceiver() {
                 ).apply {
                     description = "Alarm notifications"
                     enableVibration(true)
-                    // CRITICAL FIX 1: Bypass Do Not Disturb mode for alarms
-                    setBypassDnd(true) 
-                    // CRITICAL FIX 2: Ensure visibility on lock screen
-                    lockscreenVisibility = NotificationCompat.VISIBILITY_PUBLIC 
+                    setBypassDnd(true)
+                    lockscreenVisibility = NotificationCompat.VISIBILITY_PUBLIC
                     setSound(
                         RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM),
                         null
@@ -228,12 +227,13 @@ class AlarmReceiver : BroadcastReceiver() {
                 notificationManager.createNotificationChannel(channel)
             }
             
+            // CRITICAL FIX: Updated intent with proper extras
             val openIntent = Intent(context, MainActivity::class.java).apply {
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or 
-                    Intent.FLAG_ACTIVITY_CLEAR_TOP or
-                    Intent.FLAG_ACTIVITY_SINGLE_TOP
+                       Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                       Intent.FLAG_ACTIVITY_SINGLE_TOP
                 action = "OPEN_ALARM"
-                putExtra("alarm_id", id)
+                putExtra("notification_id", id)
                 putExtra("alarm_body", body)
             }
             
@@ -264,15 +264,13 @@ class AlarmReceiver : BroadcastReceiver() {
                 .setAutoCancel(false)
                 .setOngoing(true)
                 .setVibrate(longArrayOf(0, 1000, 500, 1000, 500, 1000))
-                // The sound is handled by playAlarmSound() manually for robustness.
-                // .setSound(RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)) 
                 .setContentIntent(openPendingIntent)
                 .setFullScreenIntent(openPendingIntent, true)
                 .addAction(0, "Dismiss", dismissPendingIntent)
                 .build()
             
             notificationManager.notify(id, notification)
-            Log.d(TAG, "📱 Notification shown")
+            Log.d(TAG, "📱 Notification shown with ID: $id")
             
         } catch (e: Exception) {
             Log.e(TAG, "Error showing notification", e)
@@ -289,8 +287,7 @@ class AlarmReceiver : BroadcastReceiver() {
             
             if (uri != null) {
                 ringtone = RingtoneManager.getRingtone(context, uri)
-                // Use a non-deprecated API if possible, but play() is standard
-                ringtone?.play() 
+                ringtone?.play()
                 Log.d(TAG, "🎵 Sound playing")
             }
         } catch (e: Exception) {
