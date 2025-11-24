@@ -165,14 +165,26 @@ class AlarmReceiver : BroadcastReceiver() {
         }
     }
     
-    // CRITICAL FIX: Changed from 30000 to 10000
     private fun findNextOccurrence(days: IntArray, hour: Int, minute: Int): Calendar? {
         if (days.isEmpty()) return null
         
         val now = Calendar.getInstance()
+        val currentDay = if (now.get(Calendar.DAY_OF_WEEK) == Calendar.SUNDAY) 6 else now.get(Calendar.DAY_OF_WEEK) - 2
         
-        for (daysAhead in 0..7) {
-            val check = Calendar.getInstance().apply {
+        val todayAlarm = Calendar.getInstance().apply {
+            set(Calendar.HOUR_OF_DAY, hour)
+            set(Calendar.MINUTE, minute)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }
+        
+        if (days.contains(currentDay) && todayAlarm.timeInMillis > now.timeInMillis + 5000) {
+            Log.d(TAG, "✓ Next occurrence: TODAY at ${hour}:${minute}")
+            return todayAlarm
+        }
+        
+        for (daysAhead in 1..7) {
+            val checkDate = Calendar.getInstance().apply {
                 add(Calendar.DAY_OF_YEAR, daysAhead)
                 set(Calendar.HOUR_OF_DAY, hour)
                 set(Calendar.MINUTE, minute)
@@ -180,31 +192,22 @@ class AlarmReceiver : BroadcastReceiver() {
                 set(Calendar.MILLISECOND, 0)
             }
             
-            // CRITICAL FIX: Changed from 30000 to 10000
-            if (check.timeInMillis <= now.timeInMillis + 10000) {
-                continue
+            val checkDay = if (checkDate.get(Calendar.DAY_OF_WEEK) == Calendar.SUNDAY) {
+                6
+            } else {
+                checkDate.get(Calendar.DAY_OF_WEEK) - 2
             }
             
-            val dayOfWeek = when (check.get(Calendar.DAY_OF_WEEK)) {
-                Calendar.MONDAY -> 0
-                Calendar.TUESDAY -> 1
-                Calendar.WEDNESDAY -> 2
-                Calendar.THURSDAY -> 3
-                Calendar.FRIDAY -> 4
-                Calendar.SATURDAY -> 5
-                Calendar.SUNDAY -> 6
-                else -> -1
-            }
-            
-            if (days.contains(dayOfWeek)) {
-                return check
+            if (days.contains(checkDay)) {
+                val dayName = arrayOf("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")[checkDay]
+                Log.d(TAG, "✓ Next occurrence: $dayName ($daysAhead days) at ${hour}:${minute}")
+                return checkDate
             }
         }
         
         return null
     }
     
-    // CRITICAL FIX: Updated intent extras
     private fun showFullScreenNotification(context: Context, id: Int, title: String, body: String) {
         try {
             val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -227,7 +230,6 @@ class AlarmReceiver : BroadcastReceiver() {
                 notificationManager.createNotificationChannel(channel)
             }
             
-            // CRITICAL FIX: Updated intent with proper extras
             val openIntent = Intent(context, MainActivity::class.java).apply {
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or 
                        Intent.FLAG_ACTIVITY_CLEAR_TOP or
@@ -270,7 +272,7 @@ class AlarmReceiver : BroadcastReceiver() {
                 .build()
             
             notificationManager.notify(id, notification)
-            Log.d(TAG, "📱 Notification shown with ID: $id")
+            Log.d(TAG, "📱 Full-screen notification shown with ID: $id")
             
         } catch (e: Exception) {
             Log.e(TAG, "Error showing notification", e)
