@@ -17,23 +17,52 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   static const platform = MethodChannel('com.reminder.myreminders/alarm');
+  bool _isCheckingPendingAlarm = false;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _setupNativeListener();
     _checkAndRescheduleAlarms();
-    _checkForPendingAlarm();
+    Future.delayed(const Duration(milliseconds: 800), _checkForPendingAlarm);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _checkForPendingAlarm();
+    }
   }
 
   Future<void> _checkForPendingAlarm() async {
-    await Future.delayed(const Duration(milliseconds: 500));
+    if (_isCheckingPendingAlarm) return;
     
-    final intent = await platform.invokeMethod('getInitialIntent');
-    if (intent != null && mounted) {
-      _handleAlarmIntent(intent);
+    _isCheckingPendingAlarm = true;
+    
+    try {
+      print('🔍 Checking for pending alarm...');
+      final result = await platform.invokeMethod('getPendingAlarmIntent');
+      
+      if (result != null && mounted) {
+        final Map<dynamic, dynamic> args = result as Map<dynamic, dynamic>;
+        print('📱 Found pending alarm: $args');
+        _handleAlarmIntent(args);
+      } else {
+        print('ℹ️ No pending alarm');
+      }
+    } catch (e) {
+      print('❌ Error checking pending alarm: $e');
+    } finally {
+      _isCheckingPendingAlarm = false;
     }
   }
 
@@ -41,7 +70,12 @@ class _HomeScreenState extends State<HomeScreen> {
     final int alarmId = args['notification_id'] ?? 0;
     final String alarmBody = args['alarm_body'] ?? '';
     
-    print('📱 Handling alarm intent: ID=$alarmId');
+    print('📱 Handling alarm intent: ID=$alarmId, Body=$alarmBody');
+    
+    if (alarmId == 0 && alarmBody.isEmpty) {
+      print('⚠️ Invalid alarm data');
+      return;
+    }
     
     final reminders = context.read<ReminderProvider>().reminders;
     ReminderModel? reminder;
@@ -50,13 +84,19 @@ class _HomeScreenState extends State<HomeScreen> {
       reminder = reminders.firstWhere(
         (r) => r.id.hashCode.abs() % 2147483647 == alarmId
       );
+      print('✅ Found reminder by hash ID');
     } catch (e) {
       try {
         reminder = reminders.firstWhere(
           (r) => r.text == alarmBody
         );
+        print('✅ Found reminder by text match');
       } catch (e2) {
-        print('❌ Could not find reminder');
+        print('❌ Could not find reminder for alarm');
+        if (mounted) {
+          _showGenericAlarmScreen(alarmId, alarmBody);
+        }
+        return;
       }
     }
     
@@ -65,13 +105,45 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  void _showGenericAlarmScreen(int notificationId, String body) {
+    final tempReminder = ReminderModel(
+      id: notificationId.toString(),
+      text: body,
+      time: TimeOfDay.now(),
+      category: 'Personal',
+      priority: 'Medium',
+      isRecurring: false,
+      requiresCaptcha: false,
+    );
+    
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        fullscreenDialog: true,
+        builder: (context) => AlarmDetailScreen(
+          reminder: tempReminder,
+          notificationId: notificationId,
+        ),
+      ),
+    );
+  }
+
   void _setupNativeListener() {
     platform.setMethodCallHandler((call) async {
+      print('📲 Received method call: ${call.method}');
+      
       if (call.method == 'onAlarmDetail') {
         final Map<dynamic, dynamic> args = call.arguments;
-        _handleAlarmIntent(args);
+        print('📱 onAlarmDetail called with: $args');
+        
+        await Future.delayed(const Duration(milliseconds: 200));
+        
+        if (mounted) {
+          _handleAlarmIntent(args);
+        }
       }
     });
+    
+    print('✅ Native listener set up');
   }
 
   Future<void> _checkAndRescheduleAlarms() async {
@@ -80,6 +152,8 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _showAlarmDetailScreen(ReminderModel reminder, int notificationId) async {
+    print('🔔 Showing alarm detail screen for: ${reminder.text}');
+    
     await Navigator.of(context).push(
       MaterialPageRoute(
         fullscreenDialog: true,
@@ -89,13 +163,13 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       ),
     );
+    
+    print('✅ Alarm detail screen closed');
   }
 
-  // Handle toggle with CAPTCHA protection
   Future<void> _handleReminderToggle(ReminderModel reminder) async {
     final provider = context.read<ReminderProvider>();
     
-    // If alarm is being turned OFF and requires CAPTCHA, show CAPTCHA screen
     if (reminder.enabled && reminder.requiresCaptcha) {
       final result = await Navigator.of(context).push<bool>(
         MaterialPageRoute(
@@ -109,7 +183,6 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       );
       
-      // Only toggle if CAPTCHA was solved
       if (result == true) {
         await provider.toggleReminder(reminder.id);
         if (mounted) {
@@ -122,7 +195,6 @@ class _HomeScreenState extends State<HomeScreen> {
         }
       }
     } else {
-      // Normal toggle (no CAPTCHA required)
       await provider.toggleReminder(reminder.id);
     }
   }
@@ -167,7 +239,6 @@ class _HomeScreenState extends State<HomeScreen> {
             children: [
               const SizedBox(height: 16),
               
-              // Always show stats
               StatsCard(provider: provider),
               
               const SizedBox(height: 8),
