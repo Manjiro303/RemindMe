@@ -5,7 +5,6 @@ import '../models/reminder_model.dart';
 class AlarmService {
   static const platform = MethodChannel('com.reminder.myreminders/alarm');
 
-  /// Schedule an alarm - main entry point
   Future<bool> scheduleAlarm(ReminderModel reminder) async {
     try {
       print('\n========================================');
@@ -15,7 +14,6 @@ class AlarmService {
       print('Recurring: ${reminder.isRecurring}');
       print('========================================\n');
 
-      // Calculate when alarm should fire
       final DateTime alarmTime = _calculateAlarmTime(reminder);
       
       if (alarmTime.isBefore(DateTime.now())) {
@@ -27,11 +25,9 @@ class AlarmService {
       print('⏰ Will fire in $minutesUntil minutes');
       print('⏰ At: $alarmTime');
 
-      // Generate consistent ID
       final alarmId = reminder.id.hashCode.abs() % 2147483647;
       print('🆔 Alarm ID: $alarmId');
 
-      // Call native Android code
       final result = await platform.invokeMethod('scheduleAlarm', {
         'alarmId': alarmId,
         'scheduledTimeMillis': alarmTime.millisecondsSinceEpoch,
@@ -55,11 +51,9 @@ class AlarmService {
     }
   }
 
-  /// Calculate when the alarm should fire - FIXED TIMING
   DateTime _calculateAlarmTime(ReminderModel reminder) {
     final now = DateTime.now();
     
-    // ONE-TIME ALARM
     if (!reminder.isRecurring && reminder.specificDate != null) {
       return DateTime(
         reminder.specificDate!.year,
@@ -72,10 +66,8 @@ class AlarmService {
       );
     }
     
-    // RECURRING ALARM - find next occurrence
     final days = reminder.days.isEmpty ? [0, 1, 2, 3, 4, 5, 6] : reminder.days;
     
-    // Try today first
     final todayAlarm = DateTime(
       now.year,
       now.month,
@@ -88,14 +80,12 @@ class AlarmService {
     
     final todayDay = now.weekday == 7 ? 6 : now.weekday - 1;
     
-    // CRITICAL FIX: Reduced buffer from 1 minute to 10 seconds
     if (days.contains(todayDay) && 
-        todayAlarm.isAfter(now.add(const Duration(seconds: 10)))) {
-      print('✓ Next occurrence: TODAY');
+        todayAlarm.isAfter(now.add(const Duration(seconds: 5)))) {
+      print('✓ Next occurrence: TODAY at ${reminder.time.hour}:${reminder.time.minute}');
       return todayAlarm;
     }
     
-    // Check next 7 days
     for (int daysAhead = 1; daysAhead <= 7; daysAhead++) {
       final checkDate = now.add(Duration(days: daysAhead));
       final checkDay = checkDate.weekday == 7 ? 6 : checkDate.weekday - 1;
@@ -117,12 +107,10 @@ class AlarmService {
       }
     }
     
-    // Fallback - tomorrow
     print('⚠️ Using fallback: tomorrow');
     return todayAlarm.add(const Duration(days: 1));
   }
 
-  /// Cancel an alarm
   Future<void> cancelAlarm(String reminderId) async {
     try {
       final alarmId = reminderId.hashCode.abs() % 2147483647;
@@ -136,16 +124,15 @@ class AlarmService {
     }
   }
 
-  /// Stop the ringtone
   Future<void> stopRingtone() async {
     try {
       await platform.invokeMethod('stopRingtone');
+      print('✅ Ringtone stopped');
     } catch (e) {
-      print('Error stopping ringtone: $e');
+      print('❌ Error stopping ringtone: $e');
     }
   }
 
-  /// Check if we can schedule exact alarms
   Future<bool> canScheduleExactAlarms() async {
     try {
       final result = await platform.invokeMethod('canScheduleExactAlarms');
@@ -156,7 +143,6 @@ class AlarmService {
     }
   }
 
-  /// Request exact alarm permission
   Future<void> requestPermission() async {
     try {
       await platform.invokeMethod('requestPermission');
@@ -165,21 +151,22 @@ class AlarmService {
     }
   }
 
-  /// Reschedule all alarms (called after boot or app restart)
   Future<void> rescheduleAllAlarms() async {
     print('ℹ️ Alarm rescheduling handled by native BootReceiver');
   }
 
-  /// Test alarm (fires in 1 minute)
   Future<bool> testAlarm(ReminderModel reminder) async {
     print('\n🧪 TESTING ALARM - Will fire in 1 minute\n');
     
+    final now = DateTime.now();
+    final testTime = now.add(const Duration(minutes: 1));
+    
     final testReminder = reminder.copyWith(
       isRecurring: false,
-      specificDate: DateTime.now(),
+      specificDate: testTime,
       time: TimeOfDay(
-        hour: DateTime.now().hour,
-        minute: DateTime.now().minute + 1,
+        hour: testTime.hour,
+        minute: testTime.minute,
       ),
     );
     
