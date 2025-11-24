@@ -11,11 +11,13 @@ import android.content.Context
 import android.util.Log
 import android.app.PendingIntent
 import android.widget.Toast
+import android.app.NotificationManager
 
 class MainActivity: FlutterActivity() {
     private val CHANNEL = "com.reminder.myreminders/alarm"
     private val TAG = "MainActivity"
     private var methodChannel: MethodChannel? = null
+    private var pendingAlarmIntent: Intent? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -37,6 +39,8 @@ class MainActivity: FlutterActivity() {
                 }
                 "stopRingtone" -> {
                     AlarmReceiver.stopRingtone()
+                    val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                    notificationManager.cancelAll()
                     result.success(true)
                 }
                 "canScheduleExactAlarms" -> {
@@ -46,45 +50,71 @@ class MainActivity: FlutterActivity() {
                     requestExactAlarmPermission()
                     result.success(null)
                 }
+                "getPendingAlarmIntent" -> {
+                    if (pendingAlarmIntent != null) {
+                        val notificationId = pendingAlarmIntent!!.getIntExtra("notification_id", 0)
+                        val alarmBody = pendingAlarmIntent!!.getStringExtra("alarm_body") ?: ""
+                        result.success(mapOf(
+                            "notification_id" to notificationId,
+                            "alarm_body" to alarmBody
+                        ))
+                        pendingAlarmIntent = null
+                    } else {
+                        result.success(null)
+                    }
+                }
                 else -> result.notImplemented()
             }
         }
         
-        // CRITICAL FIX: Handle initial intent
-        handleIntent(intent)
+        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+            handleIntent(intent)
+        }, 500)
     }
     
-    // CRITICAL FIX: Handle new intents when app is already running
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        Log.d(TAG, "📱 onNewIntent called")
         handleIntent(intent)
     }
     
-    // CRITICAL FIX: Check for pending alarm intent on resume
     override fun onResume() {
         super.onResume()
+        Log.d(TAG, "📱 onResume called")
         handleIntent(intent)
     }
     
-    // CRITICAL FIX: Method to handle alarm notification clicks
     private fun handleIntent(intent: Intent?) {
+        Log.d(TAG, "🔍 Checking intent...")
+        Log.d(TAG, "Action: ${intent?.action}")
+        Log.d(TAG, "Extras: ${intent?.extras}")
+        
         if (intent?.action == "OPEN_ALARM") {
             val notificationId = intent.getIntExtra("notification_id", 0)
             val alarmBody = intent.getStringExtra("alarm_body") ?: ""
             
-            Log.d(TAG, "📱 Opening alarm detail screen")
+            Log.d(TAG, "📱 ALARM NOTIFICATION CLICKED!")
             Log.d(TAG, "Notification ID: $notificationId")
             Log.d(TAG, "Alarm Body: $alarmBody")
             
-            // Send to Flutter via method channel
-            methodChannel?.invokeMethod("onAlarmDetail", mapOf(
-                "notification_id" to notificationId,
-                "alarm_body" to alarmBody
-            ))
+            if (methodChannel != null) {
+                Log.d(TAG, "✅ Sending to Flutter immediately")
+                methodChannel?.invokeMethod("onAlarmDetail", mapOf(
+                    "notification_id" to notificationId,
+                    "alarm_body" to alarmBody
+                ))
+            } else {
+                Log.d(TAG, "⏳ Flutter not ready, storing intent")
+                pendingAlarmIntent = intent
+            }
             
-            // Clear the action so it doesn't trigger again
             intent.action = null
+            
+            val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            notificationManager.cancel(notificationId)
+            
+            AlarmReceiver.stopRingtone()
         }
     }
     
@@ -96,6 +126,10 @@ class MainActivity: FlutterActivity() {
             } else {
                 Log.d(TAG, "✅ Exact alarm permission granted")
             }
+        }
+        
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 101)
         }
     }
     
@@ -211,6 +245,9 @@ class MainActivity: FlutterActivity() {
             )
             alarmManager.cancel(pendingIntent)
             pendingIntent.cancel()
+            
+            val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            notificationManager.cancel(alarmId)
             
             removeAlarmData(alarmId)
             
