@@ -100,8 +100,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       }
     }
     
-    if (reminder != null && mounted) {
-      _showAlarmDetailScreen(reminder, alarmId);
+    if (mounted) {
+      _showAlarmDetailScreen(reminder!, alarmId);
     }
   }
 
