@@ -78,30 +78,39 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
     
     final reminders = context.read<ReminderProvider>().reminders;
-    ReminderModel? reminder;
     
+    // Try to find by hash ID first
     try {
-      reminder = reminders.firstWhere(
+      final reminder = reminders.firstWhere(
         (r) => r.id.hashCode.abs() % 2147483647 == alarmId
       );
       print('✅ Found reminder by hash ID');
-    } catch (e) {
-      try {
-        reminder = reminders.firstWhere(
-          (r) => r.text == alarmBody
-        );
-        print('✅ Found reminder by text match');
-      } catch (e2) {
-        print('❌ Could not find reminder for alarm');
-        if (mounted) {
-          _showGenericAlarmScreen(alarmId, alarmBody);
-        }
-        return;
+      if (mounted) {
+        _showAlarmDetailScreen(reminder, alarmId);
       }
+      return;
+    } catch (e) {
+      // Not found by ID, try by text
     }
     
-    if (mounted && reminder != null) {
-      _showAlarmDetailScreen(reminder, alarmId);
+    // Try to find by text match
+    try {
+      final reminder = reminders.firstWhere(
+        (r) => r.text == alarmBody
+      );
+      print('✅ Found reminder by text match');
+      if (mounted) {
+        _showAlarmDetailScreen(reminder, alarmId);
+      }
+      return;
+    } catch (e) {
+      // Not found by text either
+    }
+    
+    // If we reach here, reminder was not found
+    print('❌ Could not find reminder for alarm');
+    if (mounted) {
+      _showGenericAlarmScreen(alarmId, alarmBody);
     }
   }
 
