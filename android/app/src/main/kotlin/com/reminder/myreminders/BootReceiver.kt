@@ -17,7 +17,7 @@ class BootReceiver : BroadcastReceiver() {
             intent.action == "android.intent.action.QUICKBOOT_POWERON") {
             
             Log.d(TAG, "========================================")
-            Log.d(TAG, "📱 DEVICE BOOTED")
+            Log.d(TAG, "📱 DEVICE BOOTED - Action: ${intent.action}")
             Log.d(TAG, "========================================")
             
             rescheduleAll(context)
@@ -44,7 +44,7 @@ class BootReceiver : BroadcastReceiver() {
                     val minute = prefs.getInt("alarm_${id}_minute", -1)
                     
                     if (title == null || body == null || hour < 0 || minute < 0) {
-                        Log.w(TAG, "Incomplete data for alarm $id")
+                        Log.w(TAG, "Incomplete data for alarm $id - skipping")
                         continue
                     }
                     
@@ -53,10 +53,16 @@ class BootReceiver : BroadcastReceiver() {
                             .mapNotNull { it.toIntOrNull() }
                             .toIntArray()
                         
-                        if (rescheduleAlarm(context, id, title, body, days, hour, minute)) {
-                            successCount++
-                            Log.d(TAG, "✅ Rescheduled alarm $id: $body")
+                        if (days.isNotEmpty()) {
+                            if (rescheduleAlarm(context, id, title, body, days, hour, minute)) {
+                                successCount++
+                                Log.d(TAG, "✅ Rescheduled alarm $id: $body")
+                            } else {
+                                Log.e(TAG, "❌ Failed to reschedule alarm $id")
+                            }
                         }
+                    } else {
+                        Log.d(TAG, "⏹️ Alarm $id is one-time - skipping")
                     }
                     
                 } catch (e: Exception) {
@@ -65,7 +71,7 @@ class BootReceiver : BroadcastReceiver() {
             }
             
             Log.d(TAG, "========================================")
-            Log.d(TAG, "✅ Rescheduled $successCount/${activeIds.size} alarms")
+            Log.d(TAG, "✅ Rescheduled $successCount/${activeIds.size} recurring alarms")
             Log.d(TAG, "========================================")
             
         } catch (e: Exception) {
@@ -83,7 +89,15 @@ class BootReceiver : BroadcastReceiver() {
         minute: Int
     ): Boolean {
         return try {
-            val nextTime = findNext(days, hour, minute) ?: return false
+            val nextTime = findNext(days, hour, minute)
+            
+            if (nextTime == null) {
+                Log.e(TAG, "Could not find next occurrence for alarm $id")
+                return false
+            }
+            
+            val minutesUntil = (nextTime.timeInMillis - System.currentTimeMillis()) / 60000
+            Log.d(TAG, "Alarm $id will fire in $minutesUntil minutes")
             
             val alarmIntent = Intent(context, AlarmReceiver::class.java).apply {
                 putExtra("id", id)
@@ -108,6 +122,7 @@ class BootReceiver : BroadcastReceiver() {
                 Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
                     val info = AlarmManager.AlarmClockInfo(nextTime.timeInMillis, pendingIntent)
                     alarmManager.setAlarmClock(info, pendingIntent)
+                    Log.d(TAG, "Using setAlarmClock for alarm $id")
                 }
                 Build.VERSION.SDK_INT >= Build.VERSION_CODES.M -> {
                     alarmManager.setExactAndAllowWhileIdle(
@@ -115,6 +130,7 @@ class BootReceiver : BroadcastReceiver() {
                         nextTime.timeInMillis,
                         pendingIntent
                     )
+                    Log.d(TAG, "Using setExactAndAllowWhileIdle for alarm $id")
                 }
                 else -> {
                     alarmManager.setExact(
@@ -122,6 +138,7 @@ class BootReceiver : BroadcastReceiver() {
                         nextTime.timeInMillis,
                         pendingIntent
                     )
+                    Log.d(TAG, "Using setExact for alarm $id")
                 }
             }
             
@@ -132,14 +149,25 @@ class BootReceiver : BroadcastReceiver() {
         }
     }
     
-    // CRITICAL FIX: Changed from 30000 to 10000
     private fun findNext(days: IntArray, hour: Int, minute: Int): Calendar? {
         if (days.isEmpty()) return null
         
         val now = Calendar.getInstance()
+        val currentDay = if (now.get(Calendar.DAY_OF_WEEK) == Calendar.SUNDAY) 6 else now.get(Calendar.DAY_OF_WEEK) - 2
         
-        for (daysAhead in 0..7) {
-            val check = Calendar.getInstance().apply {
+        val todayAlarm = Calendar.getInstance().apply {
+            set(Calendar.HOUR_OF_DAY, hour)
+            set(Calendar.MINUTE, minute)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }
+        
+        if (days.contains(currentDay) && todayAlarm.timeInMillis > now.timeInMillis + 5000) {
+            return todayAlarm
+        }
+        
+        for (daysAhead in 1..7) {
+            val checkDate = Calendar.getInstance().apply {
                 add(Calendar.DAY_OF_YEAR, daysAhead)
                 set(Calendar.HOUR_OF_DAY, hour)
                 set(Calendar.MINUTE, minute)
@@ -147,24 +175,14 @@ class BootReceiver : BroadcastReceiver() {
                 set(Calendar.MILLISECOND, 0)
             }
             
-            // CRITICAL FIX: Changed from 30000 to 10000
-            if (check.timeInMillis <= now.timeInMillis + 10000) {
-                continue
+            val checkDay = if (checkDate.get(Calendar.DAY_OF_WEEK) == Calendar.SUNDAY) {
+                6
+            } else {
+                checkDate.get(Calendar.DAY_OF_WEEK) - 2
             }
             
-            val dayOfWeek = when (check.get(Calendar.DAY_OF_WEEK)) {
-                Calendar.MONDAY -> 0
-                Calendar.TUESDAY -> 1
-                Calendar.WEDNESDAY -> 2
-                Calendar.THURSDAY -> 3
-                Calendar.FRIDAY -> 4
-                Calendar.SATURDAY -> 5
-                Calendar.SUNDAY -> 6
-                else -> -1
-            }
-            
-            if (days.contains(dayOfWeek)) {
-                return check
+            if (days.contains(checkDay)) {
+                return checkDate
             }
         }
         
