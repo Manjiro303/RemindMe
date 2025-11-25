@@ -29,6 +29,8 @@ class MyRemindersApp extends StatefulWidget {
 class _MyRemindersAppState extends State<MyRemindersApp> with WidgetsBindingObserver {
   static const platform = MethodChannel('com.reminder.myreminders/alarm');
   final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+  bool _permissionChecked = false;
+  bool _permissionGranted = false;
 
   @override
   void initState() {
@@ -53,16 +55,27 @@ class _MyRemindersAppState extends State<MyRemindersApp> with WidgetsBindingObse
   Future<void> _checkPermissions() async {
     try {
       final canSchedule = await platform.invokeMethod('canScheduleExactAlarms');
+      setState(() {
+        _permissionChecked = true;
+        _permissionGranted = canSchedule == true;
+      });
+      
       if (canSchedule == false) {
         print('⚠️ Exact alarm permission not granted');
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          _showPermissionDialog();
+          if (!_permissionGranted && mounted) {
+            _showPermissionDialog();
+          }
         });
       } else {
         print('✅ Exact alarm permission granted');
       }
     } catch (e) {
       print('Error checking permissions: $e');
+      setState(() {
+        _permissionChecked = true;
+        _permissionGranted = false;
+      });
     }
   }
 
@@ -88,7 +101,12 @@ class _MyRemindersAppState extends State<MyRemindersApp> with WidgetsBindingObse
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: () {
+              Navigator.pop(context);
+              setState(() {
+                _permissionGranted = false;
+              });
+            },
             child: const Text('Later'),
           ),
           ElevatedButton(
@@ -96,6 +114,9 @@ class _MyRemindersAppState extends State<MyRemindersApp> with WidgetsBindingObse
               Navigator.pop(context);
               try {
                 await platform.invokeMethod('requestPermission');
+                // Check permission again after a delay
+                await Future.delayed(const Duration(seconds: 1));
+                await _checkPermissions();
               } catch (e) {
                 print('Error requesting permission: $e');
               }
