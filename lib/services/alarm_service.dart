@@ -12,6 +12,7 @@ class AlarmService {
       print('Text: ${reminder.text}');
       print('Category: ${reminder.category}');
       print('Recurring: ${reminder.isRecurring}');
+      print('Requires Captcha: ${reminder.requiresCaptcha}');
       print('========================================\n');
 
       final DateTime alarmTime = _calculateAlarmTime(reminder);
@@ -37,6 +38,7 @@ class AlarmService {
         'selectedDays': reminder.isRecurring ? reminder.days : [],
         'reminderHour': reminder.time.hour,
         'reminderMinute': reminder.time.minute,
+        'requiresCaptcha': reminder.requiresCaptcha,
       });
 
       print(result ? '✅ SUCCESS' : '❌ FAILED');
