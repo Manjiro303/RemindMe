@@ -16,7 +16,6 @@ import android.app.AlarmManager
 import android.os.VibrationEffect
 import android.os.Vibrator
 import java.util.Calendar
-import android.view.WindowManager
 
 class AlarmReceiver : BroadcastReceiver() {
     
@@ -129,11 +128,6 @@ class AlarmReceiver : BroadcastReceiver() {
                 putExtra("alarm_body", body)
                 putExtra("alarm_title", title)
                 putExtra("requires_captcha", requiresCaptcha)
-                
-                // Add window flags to show over lockscreen
-                addFlags(Intent.FLAG_ACTIVITY_SHOW_WHEN_LOCKED)
-                addFlags(Intent.FLAG_ACTIVITY_TURN_SCREEN_ON)
-                addFlags(Intent.FLAG_ACTIVITY_DISMISS_KEYGUARD)
             }
             
             context.startActivity(activityIntent)
@@ -280,9 +274,7 @@ class AlarmReceiver : BroadcastReceiver() {
             val openIntent = Intent(context, MainActivity::class.java).apply {
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or 
                        Intent.FLAG_ACTIVITY_CLEAR_TOP or
-                       Intent.FLAG_ACTIVITY_SINGLE_TOP or
-                       Intent.FLAG_ACTIVITY_SHOW_WHEN_LOCKED or
-                       Intent.FLAG_ACTIVITY_TURN_SCREEN_ON
+                       Intent.FLAG_ACTIVITY_SINGLE_TOP
                 action = "OPEN_ALARM"
                 putExtra("notification_id", id)
                 putExtra("alarm_body", body)
