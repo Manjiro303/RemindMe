@@ -42,6 +42,7 @@ class BootReceiver : BroadcastReceiver() {
                     val daysStr = prefs.getString("alarm_${id}_days", null)
                     val hour = prefs.getInt("alarm_${id}_hour", -1)
                     val minute = prefs.getInt("alarm_${id}_minute", -1)
+                    val requiresCaptcha = prefs.getBoolean("alarm_${id}_captcha", false)
                     
                     if (title == null || body == null || hour < 0 || minute < 0) {
                         Log.w(TAG, "Incomplete data for alarm $id - skipping")
@@ -54,7 +55,7 @@ class BootReceiver : BroadcastReceiver() {
                             .toIntArray()
                         
                         if (days.isNotEmpty()) {
-                            if (rescheduleAlarm(context, id, title, body, days, hour, minute)) {
+                            if (rescheduleAlarm(context, id, title, body, days, hour, minute, requiresCaptcha)) {
                                 successCount++
                                 Log.d(TAG, "✅ Rescheduled alarm $id: $body")
                             } else {
@@ -86,7 +87,8 @@ class BootReceiver : BroadcastReceiver() {
         body: String,
         days: IntArray,
         hour: Int,
-        minute: Int
+        minute: Int,
+        requiresCaptcha: Boolean
     ): Boolean {
         return try {
             val nextTime = findNext(days, hour, minute)
@@ -107,6 +109,7 @@ class BootReceiver : BroadcastReceiver() {
                 putExtra("selectedDays", days)
                 putExtra("reminderHour", hour)
                 putExtra("reminderMinute", minute)
+                putExtra("requiresCaptcha", requiresCaptcha)
             }
             
             val pendingIntent = PendingIntent.getBroadcast(
