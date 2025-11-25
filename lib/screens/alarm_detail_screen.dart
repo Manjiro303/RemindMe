@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../models/reminder_model.dart';
 import '../utils/constants.dart';
 import '../services/platform_channel_service.dart';
@@ -28,9 +29,11 @@ class _AlarmDetailScreenState extends State<AlarmDetailScreen> with SingleTicker
   void initState() {
     super.initState();
     
+    // Prevent back button
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+    
     // If CAPTCHA is required, show it immediately
     if (widget.reminder.requiresCaptcha) {
-      // Show CAPTCHA after a brief delay to allow screen to build
       Future.delayed(const Duration(milliseconds: 100), () {
         if (mounted) {
           setState(() => _showCaptcha = true);
@@ -55,6 +58,7 @@ class _AlarmDetailScreenState extends State<AlarmDetailScreen> with SingleTicker
   @override
   void dispose() {
     _animationController.dispose();
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     super.dispose();
   }
 
@@ -62,9 +66,17 @@ class _AlarmDetailScreenState extends State<AlarmDetailScreen> with SingleTicker
   Widget build(BuildContext context) {
     // Show CAPTCHA screen if required
     if (_showCaptcha && widget.reminder.requiresCaptcha) {
-      return CaptchaScreen(
-        onSuccess: _handleDismissAfterCaptcha,
-        reminderText: widget.reminder.text,
+      return PopScope(
+        canPop: false,
+        onPopInvoked: (didPop) async {
+          if (didPop) return;
+          // Prevent back navigation
+          return;
+        },
+        child: CaptchaScreen(
+          onSuccess: _handleDismissAfterCaptcha,
+          reminderText: widget.reminder.text,
+        ),
       );
     }
 
@@ -72,7 +84,16 @@ class _AlarmDetailScreenState extends State<AlarmDetailScreen> with SingleTicker
     final priorityColor = AppConstants.getPriorityColors()[widget.reminder.priority]!;
 
     return PopScope(
-      canPop: false, // CRITICAL: Cannot go back without dismissing
+      canPop: false,
+      onPopInvoked: (didPop) async {
+        if (didPop) return;
+        // If CAPTCHA is required, don't allow back
+        if (widget.reminder.requiresCaptcha) {
+          return;
+        }
+        // Otherwise allow dismissal
+        await _handleDismissWithoutCaptcha();
+      },
       child: Scaffold(
         body: Container(
           decoration: BoxDecoration(
@@ -236,6 +257,33 @@ class _AlarmDetailScreenState extends State<AlarmDetailScreen> with SingleTicker
                                   value: widget.reminder.note,
                                   valueColor: Colors.grey[700]!,
                                   multiLine: true,
+                                ),
+                              ],
+                              if (widget.reminder.requiresCaptcha) ...[
+                                const SizedBox(height: 16),
+                                Container(
+                                  padding: const EdgeInsets.all(12),
+                                  decoration: BoxDecoration(
+                                    color: Colors.blue.shade50,
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(color: Colors.blue.shade200),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Icon(Icons.security, color: Colors.blue.shade700, size: 20),
+                                      const SizedBox(width: 8),
+                                      Expanded(
+                                        child: Text(
+                                          'CAPTCHA required to dismiss',
+                                          style: TextStyle(
+                                            color: Colors.blue.shade700,
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 13,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
                                 ),
                               ],
                             ],
