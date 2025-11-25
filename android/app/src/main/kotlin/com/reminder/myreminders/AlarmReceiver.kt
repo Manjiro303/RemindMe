@@ -16,18 +16,26 @@ import android.app.AlarmManager
 import android.os.VibrationEffect
 import android.os.Vibrator
 import java.util.Calendar
+import android.view.WindowManager
 
 class AlarmReceiver : BroadcastReceiver() {
     
     companion object {
         private const val TAG = "AlarmReceiver"
         private var ringtone: Ringtone? = null
+        private var wakeLock: PowerManager.WakeLock? = null
         
         fun stopRingtone() {
             try {
                 ringtone?.stop()
                 ringtone = null
-                Log.d(TAG, "🔇 Ringtone stopped")
+                wakeLock?.let {
+                    if (it.isHeld) {
+                        it.release()
+                    }
+                }
+                wakeLock = null
+                Log.d(TAG, "🔇 Ringtone stopped and wake lock released")
             } catch (e: Exception) {
                 Log.e(TAG, "Error stopping ringtone: ${e.message}")
             }
@@ -44,14 +52,15 @@ class AlarmReceiver : BroadcastReceiver() {
             return
         }
         
+        // Acquire FULL wake lock with screen and keyboard wake up
         val powerManager = context.getSystemService(Context.POWER_SERVICE) as PowerManager
-        val wakeLock = powerManager.newWakeLock(
+        wakeLock = powerManager.newWakeLock(
             PowerManager.FULL_WAKE_LOCK or 
             PowerManager.ACQUIRE_CAUSES_WAKEUP or 
             PowerManager.ON_AFTER_RELEASE,
             "RemindMe::FullWakeLock"
         )
-        wakeLock.acquire(60000)
+        wakeLock?.acquire(5 * 60 * 1000L) // 5 minutes max
         
         try {
             val id = intent.getIntExtra("id", 0)
@@ -61,15 +70,17 @@ class AlarmReceiver : BroadcastReceiver() {
             val days = intent.getIntArrayExtra("selectedDays") ?: intArrayOf()
             val hour = intent.getIntExtra("reminderHour", 0)
             val minute = intent.getIntExtra("reminderMinute", 0)
+            val requiresCaptcha = intent.getBooleanExtra("requiresCaptcha", false)
             
             Log.d(TAG, "ID: $id")
             Log.d(TAG, "Title: $title")
             Log.d(TAG, "Body: $body")
             Log.d(TAG, "Recurring: $isRecurring")
+            Log.d(TAG, "Requires Captcha: $requiresCaptcha")
             
             if (isRecurring && days.isNotEmpty()) {
                 Log.d(TAG, "🔄 Scheduling next occurrence...")
-                val scheduled = scheduleNextAlarm(context, id, title, body, days, hour, minute)
+                val scheduled = scheduleNextAlarm(context, id, title, body, days, hour, minute, requiresCaptcha)
                 if (scheduled) {
                     Log.d(TAG, "✅ Next alarm scheduled")
                 } else {
@@ -80,7 +91,13 @@ class AlarmReceiver : BroadcastReceiver() {
                 removeFromStorage(context, id)
             }
             
+            // Start the full screen activity
+            launchFullScreenActivity(context, id, title, body, requiresCaptcha)
+            
+            // Also show notification as backup
             showFullScreenNotification(context, id, title, body)
+            
+            // Play sound and vibrate
             playAlarmSound(context)
             vibrateDevice(context)
             
@@ -89,13 +106,41 @@ class AlarmReceiver : BroadcastReceiver() {
         } catch (e: Exception) {
             Log.e(TAG, "❌ ERROR in onReceive", e)
             e.printStackTrace()
-        } finally {
-            if (wakeLock.isHeld) {
-                wakeLock.release()
-            }
         }
         
         Log.d(TAG, "========================================")
+    }
+    
+    private fun launchFullScreenActivity(
+        context: Context,
+        id: Int,
+        title: String,
+        body: String,
+        requiresCaptcha: Boolean
+    ) {
+        try {
+            val activityIntent = Intent(context, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or 
+                       Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                       Intent.FLAG_ACTIVITY_SINGLE_TOP or
+                       Intent.FLAG_ACTIVITY_NO_USER_ACTION
+                action = "OPEN_ALARM"
+                putExtra("notification_id", id)
+                putExtra("alarm_body", body)
+                putExtra("alarm_title", title)
+                putExtra("requires_captcha", requiresCaptcha)
+                
+                // Add window flags to show over lockscreen
+                addFlags(Intent.FLAG_ACTIVITY_SHOW_WHEN_LOCKED)
+                addFlags(Intent.FLAG_ACTIVITY_TURN_SCREEN_ON)
+                addFlags(Intent.FLAG_ACTIVITY_DISMISS_KEYGUARD)
+            }
+            
+            context.startActivity(activityIntent)
+            Log.d(TAG, "🚀 Full screen activity launched")
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ Error launching activity", e)
+        }
     }
     
     private fun scheduleNextAlarm(
@@ -105,7 +150,8 @@ class AlarmReceiver : BroadcastReceiver() {
         body: String,
         days: IntArray,
         hour: Int,
-        minute: Int
+        minute: Int,
+        requiresCaptcha: Boolean
     ): Boolean {
         return try {
             val nextTime = findNextOccurrence(days, hour, minute)
@@ -126,6 +172,7 @@ class AlarmReceiver : BroadcastReceiver() {
                 putExtra("selectedDays", days)
                 putExtra("reminderHour", hour)
                 putExtra("reminderMinute", minute)
+                putExtra("requiresCaptcha", requiresCaptcha)
             }
             
             val pendingIntent = PendingIntent.getBroadcast(
@@ -233,7 +280,9 @@ class AlarmReceiver : BroadcastReceiver() {
             val openIntent = Intent(context, MainActivity::class.java).apply {
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or 
                        Intent.FLAG_ACTIVITY_CLEAR_TOP or
-                       Intent.FLAG_ACTIVITY_SINGLE_TOP
+                       Intent.FLAG_ACTIVITY_SINGLE_TOP or
+                       Intent.FLAG_ACTIVITY_SHOW_WHEN_LOCKED or
+                       Intent.FLAG_ACTIVITY_TURN_SCREEN_ON
                 action = "OPEN_ALARM"
                 putExtra("notification_id", id)
                 putExtra("alarm_body", body)
@@ -327,6 +376,7 @@ class AlarmReceiver : BroadcastReceiver() {
         editor.remove("alarm_${id}_days")
         editor.remove("alarm_${id}_hour")
         editor.remove("alarm_${id}_minute")
+        editor.remove("alarm_${id}_captcha")
         
         val ids = prefs.getStringSet("active_ids", mutableSetOf()) ?: mutableSetOf()
         val newIds = ids.toMutableSet()
