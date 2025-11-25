@@ -12,6 +12,8 @@ import android.util.Log
 import android.app.PendingIntent
 import android.widget.Toast
 import android.app.NotificationManager
+import android.os.Bundle
+import android.view.WindowManager
 
 class MainActivity: FlutterActivity() {
     private val CHANNEL = "com.reminder.myreminders/alarm"
@@ -19,11 +21,27 @@ class MainActivity: FlutterActivity() {
     private var methodChannel: MethodChannel? = null
     private var pendingAlarmIntent: Intent? = null
 
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        
+        // Set flags to show activity over lockscreen
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+            setShowWhenLocked(true)
+            setTurnScreenOn(true)
+        } else {
+            window.addFlags(
+                WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+                WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON or
+                WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD or
+                WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
+            )
+        }
+    }
+
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         
         Log.d(TAG, "🚀 Configuring Flutter Engine")
-        checkAndRequestPermissions()
         
         methodChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL)
         methodChannel?.setMethodCallHandler { call, result ->
@@ -54,9 +72,13 @@ class MainActivity: FlutterActivity() {
                     if (pendingAlarmIntent != null) {
                         val notificationId = pendingAlarmIntent!!.getIntExtra("notification_id", 0)
                         val alarmBody = pendingAlarmIntent!!.getStringExtra("alarm_body") ?: ""
+                        val alarmTitle = pendingAlarmIntent!!.getStringExtra("alarm_title") ?: ""
+                        val requiresCaptcha = pendingAlarmIntent!!.getBooleanExtra("requires_captcha", false)
                         result.success(mapOf(
                             "notification_id" to notificationId,
-                            "alarm_body" to alarmBody
+                            "alarm_body" to alarmBody,
+                            "alarm_title" to alarmTitle,
+                            "requires_captcha" to requiresCaptcha
                         ))
                         pendingAlarmIntent = null
                     } else {
@@ -93,16 +115,21 @@ class MainActivity: FlutterActivity() {
         if (intent?.action == "OPEN_ALARM") {
             val notificationId = intent.getIntExtra("notification_id", 0)
             val alarmBody = intent.getStringExtra("alarm_body") ?: ""
+            val alarmTitle = intent.getStringExtra("alarm_title") ?: ""
+            val requiresCaptcha = intent.getBooleanExtra("requires_captcha", false)
             
             Log.d(TAG, "📱 ALARM NOTIFICATION CLICKED!")
             Log.d(TAG, "Notification ID: $notificationId")
             Log.d(TAG, "Alarm Body: $alarmBody")
+            Log.d(TAG, "Requires Captcha: $requiresCaptcha")
             
             if (methodChannel != null) {
                 Log.d(TAG, "✅ Sending to Flutter immediately")
                 methodChannel?.invokeMethod("onAlarmDetail", mapOf(
                     "notification_id" to notificationId,
-                    "alarm_body" to alarmBody
+                    "alarm_body" to alarmBody,
+                    "alarm_title" to alarmTitle,
+                    "requires_captcha" to requiresCaptcha
                 ))
             } else {
                 Log.d(TAG, "⏳ Flutter not ready, storing intent")
@@ -113,26 +140,9 @@ class MainActivity: FlutterActivity() {
             
             val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             notificationManager.cancel(notificationId)
-            
-            AlarmReceiver.stopRingtone()
         }
     }
-    
-    private fun checkAndRequestPermissions() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            val alarmManager = getSystemService(Context.ALARM_SERVICE) as AlarmManager
-            if (!alarmManager.canScheduleExactAlarms()) {
-                Log.w(TAG, "⚠️ Exact alarm permission not granted")
-            } else {
-                Log.d(TAG, "✅ Exact alarm permission granted")
-            }
-        }
-        
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 101)
-        }
-    }
-    
+
     private fun scheduleAlarm(args: Map<String, Any>): Boolean {
         try {
             val alarmId = args["alarmId"] as Int
@@ -143,6 +153,7 @@ class MainActivity: FlutterActivity() {
             val selectedDays = (args["selectedDays"] as? List<Int>)?.toIntArray() ?: intArrayOf()
             val reminderHour = args["reminderHour"] as Int
             val reminderMinute = args["reminderMinute"] as Int
+            val requiresCaptcha = args["requiresCaptcha"] as? Boolean ?: false
             
             Log.d(TAG, "========================================")
             Log.d(TAG, "📅 SCHEDULING ALARM")
@@ -152,6 +163,7 @@ class MainActivity: FlutterActivity() {
             Log.d(TAG, "Time: ${java.util.Date(timeMillis)}")
             Log.d(TAG, "Recurring: $isRecurring")
             Log.d(TAG, "Days: ${selectedDays.joinToString()}")
+            Log.d(TAG, "Requires Captcha: $requiresCaptcha")
             Log.d(TAG, "========================================")
             
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -182,6 +194,7 @@ class MainActivity: FlutterActivity() {
                 putExtra("selectedDays", selectedDays)
                 putExtra("reminderHour", reminderHour)
                 putExtra("reminderMinute", reminderMinute)
+                putExtra("requiresCaptcha", requiresCaptcha)
             }
             
             val pendingIntent = PendingIntent.getBroadcast(
@@ -217,7 +230,7 @@ class MainActivity: FlutterActivity() {
                 }
             }
             
-            saveAlarmData(alarmId, title, body, isRecurring, selectedDays, reminderHour, reminderMinute)
+            saveAlarmData(alarmId, title, body, isRecurring, selectedDays, reminderHour, reminderMinute, requiresCaptcha)
             
             val minutesUntil = (timeMillis - now) / 60000
             Toast.makeText(this, "⏰ Alarm set for $minutesUntil minutes from now", Toast.LENGTH_SHORT).show()
@@ -264,7 +277,8 @@ class MainActivity: FlutterActivity() {
         isRecurring: Boolean,
         days: IntArray,
         hour: Int,
-        minute: Int
+        minute: Int,
+        requiresCaptcha: Boolean
     ) {
         val prefs = getSharedPreferences("RemindMeAlarms", Context.MODE_PRIVATE)
         val editor = prefs.edit()
@@ -275,6 +289,7 @@ class MainActivity: FlutterActivity() {
         editor.putString("alarm_${id}_days", days.joinToString(","))
         editor.putInt("alarm_${id}_hour", hour)
         editor.putInt("alarm_${id}_minute", minute)
+        editor.putBoolean("alarm_${id}_captcha", requiresCaptcha)
         
         val ids = prefs.getStringSet("active_ids", mutableSetOf()) ?: mutableSetOf()
         val newIds = ids.toMutableSet()
@@ -295,6 +310,7 @@ class MainActivity: FlutterActivity() {
         editor.remove("alarm_${id}_days")
         editor.remove("alarm_${id}_hour")
         editor.remove("alarm_${id}_minute")
+        editor.remove("alarm_${id}_captcha")
         
         val ids = prefs.getStringSet("active_ids", mutableSetOf()) ?: mutableSetOf()
         val newIds = ids.toMutableSet()
