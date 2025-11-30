@@ -402,6 +402,7 @@ class _AlarmDetailScreenState extends State<AlarmDetailScreen> with SingleTicker
 
   Future<void> _handleDismissWithoutCaptcha() async {
     print('✅ Dismissing alarm without CAPTCHA');
+    await PlatformChannelService().stopRingtone();
     await PlatformChannelService().cancelNotification(widget.notificationId);
     if (mounted) {
       Navigator.pop(context);
@@ -410,6 +411,7 @@ class _AlarmDetailScreenState extends State<AlarmDetailScreen> with SingleTicker
 
   Future<void> _handleDismissAfterCaptcha() async {
     print('✅ CAPTCHA solved - Stopping alarm and dismissing');
+    await PlatformChannelService().stopRingtone();
     await PlatformChannelService().cancelNotification(widget.notificationId);
     if (mounted) {
       Navigator.pop(context);
