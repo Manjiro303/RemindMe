@@ -23,18 +23,23 @@ class AlarmReceiver : BroadcastReceiver() {
         private const val TAG = "AlarmReceiver"
         private var ringtone: Ringtone? = null
         private var wakeLock: PowerManager.WakeLock? = null
+        private var vibrator: Vibrator? = null
         
         fun stopRingtone() {
             try {
                 ringtone?.stop()
                 ringtone = null
+                
+                vibrator?.cancel()
+                vibrator = null
+                
                 wakeLock?.let {
                     if (it.isHeld) {
                         it.release()
                     }
                 }
                 wakeLock = null
-                Log.d(TAG, "🔇 Ringtone stopped and wake lock released")
+                Log.d(TAG, "🔇 Ringtone and vibration stopped, wake lock released")
             } catch (e: Exception) {
                 Log.e(TAG, "Error stopping ringtone: ${e.message}")
             }
@@ -59,7 +64,7 @@ class AlarmReceiver : BroadcastReceiver() {
             PowerManager.ON_AFTER_RELEASE,
             "RemindMe::FullWakeLock"
         )
-        wakeLock?.acquire(5 * 60 * 1000L) // 5 minutes max
+        wakeLock?.acquire(10 * 60 * 1000L) // 10 minutes max
         
         try {
             val id = intent.getIntExtra("id", 0)
@@ -90,15 +95,15 @@ class AlarmReceiver : BroadcastReceiver() {
                 removeFromStorage(context, id)
             }
             
+            // Play sound and vibrate BEFORE launching activity
+            playAlarmSound(context)
+            vibrateDevice(context)
+            
             // Start the full screen activity
             launchFullScreenActivity(context, id, title, body, requiresCaptcha)
             
             // Also show notification as backup
             showFullScreenNotification(context, id, title, body)
-            
-            // Play sound and vibrate
-            playAlarmSound(context)
-            vibrateDevice(context)
             
             Log.d(TAG, "✅ Alarm processing complete")
             
@@ -260,13 +265,10 @@ class AlarmReceiver : BroadcastReceiver() {
                     NotificationManager.IMPORTANCE_HIGH
                 ).apply {
                     description = "Alarm notifications"
-                    enableVibration(true)
+                    enableVibration(false)
                     setBypassDnd(true)
                     lockscreenVisibility = NotificationCompat.VISIBILITY_PUBLIC
-                    setSound(
-                        RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM),
-                        null
-                    )
+                    setSound(null, null)
                 }
                 notificationManager.createNotificationChannel(channel)
             }
@@ -306,7 +308,8 @@ class AlarmReceiver : BroadcastReceiver() {
                 .setCategory(NotificationCompat.CATEGORY_ALARM)
                 .setAutoCancel(false)
                 .setOngoing(true)
-                .setVibrate(longArrayOf(0, 1000, 500, 1000, 500, 1000))
+                .setSound(null)
+                .setVibrate(null)
                 .setContentIntent(openPendingIntent)
                 .setFullScreenIntent(openPendingIntent, true)
                 .addAction(0, "Dismiss", dismissPendingIntent)
@@ -340,19 +343,19 @@ class AlarmReceiver : BroadcastReceiver() {
     
     private fun vibrateDevice(context: Context) {
         try {
-            val vibrator = context.getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
+            vibrator = context.getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                vibrator.vibrate(
+                vibrator?.vibrate(
                     VibrationEffect.createWaveform(
-                        longArrayOf(0, 500, 200, 500, 200, 500),
-                        -1
+                        longArrayOf(0, 500, 200, 500, 200, 500, 1000),
+                        0
                     )
                 )
             } else {
                 @Suppress("DEPRECATION")
-                vibrator.vibrate(longArrayOf(0, 500, 200, 500, 200, 500), -1)
+                vibrator?.vibrate(longArrayOf(0, 500, 200, 500, 200, 500, 1000), 0)
             }
-            Log.d(TAG, "📳 Vibrating")
+            Log.d(TAG, "📳 Vibrating continuously")
         } catch (e: Exception) {
             Log.e(TAG, "Error vibrating", e)
         }
