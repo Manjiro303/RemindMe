@@ -400,7 +400,7 @@ class _AddEditReminderScreenState extends State<AddEditReminderScreen> {
           '🔐 Security',
           style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 13),
         Card(
           child: SwitchListTile(
             title: const Text('Require CAPTCHA to Dismiss'),
