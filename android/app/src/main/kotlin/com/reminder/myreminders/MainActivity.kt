@@ -56,7 +56,8 @@ class MainActivity: FlutterActivity() {
                     result.success(true)
                 }
                 "stopRingtone" -> {
-                    AlarmReceiver.stopRingtone()
+                    // Call the new captchaSolved method for CAPTCHA alarms
+                    AlarmReceiver.captchaSolved()
                     val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
                     notificationManager.cancelAll()
                     result.success(true)
@@ -319,7 +320,7 @@ class MainActivity: FlutterActivity() {
         editor.remove("alarm_${id}_minute")
         editor.remove("alarm_${id}_captcha")
         
-        val ids = prefs.getStringSet("active_ids", mutableSetOf()) ?: mutableSetOf()
+        val ids = prefs.getStringSet("active_ids", mutableSetOf()) ?: mutableSetSet()
         val newIds = ids.toMutableSet()
         newIds.remove(id.toString())
         editor.putStringSet("active_ids", newIds)
