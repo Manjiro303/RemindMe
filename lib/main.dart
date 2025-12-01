@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'dart:io';
 import 'providers/reminder_provider.dart';
 import 'screens/home_screen.dart';
 import 'utils/theme.dart';
@@ -8,10 +10,16 @@ import 'utils/theme.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
+  // Global error handling for production
+  FlutterError.onError = (FlutterErrorDetails details) {
+    print('❌ Flutter Error: ${details.exception}');
+    print('Stack Trace: ${details.stack}');
+  };
+  
   print('✅ App initialized');
   
   // Lock orientation to portrait
-  SystemChrome.setPreferredOrientations([
+  await SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,
     DeviceOrientation.portraitDown,
   ]);
@@ -54,7 +62,19 @@ class _MyRemindersAppState extends State<MyRemindersApp> with WidgetsBindingObse
 
   Future<void> _checkPermissions() async {
     try {
+      // Check exact alarm permission
       final canSchedule = await platform.invokeMethod('canScheduleExactAlarms');
+      
+      // Check notification permission for Android 13+
+      if (Platform.isAndroid) {
+        final notificationStatus = await Permission.notification.status;
+        if (notificationStatus.isDenied) {
+          print('📱 Requesting notification permission for Android 13+');
+          final result = await Permission.notification.request();
+          print('Notification permission result: $result');
+        }
+      }
+      
       setState(() {
         _permissionChecked = true;
         _permissionGranted = canSchedule == true;
@@ -71,7 +91,7 @@ class _MyRemindersAppState extends State<MyRemindersApp> with WidgetsBindingObse
         print('✅ Exact alarm permission granted');
       }
     } catch (e) {
-      print('Error checking permissions: $e');
+      print('❌ Error checking permissions: $e');
       setState(() {
         _permissionChecked = true;
         _permissionGranted = false;
@@ -87,17 +107,24 @@ class _MyRemindersAppState extends State<MyRemindersApp> with WidgetsBindingObse
       context: context,
       barrierDismissible: false,
       builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: const Row(
           children: [
-            Icon(Icons.alarm, color: Colors.orange),
+            Icon(Icons.alarm, color: Colors.orange, size: 28),
             SizedBox(width: 12),
-            Expanded(child: Text('Permission Required')),
+            Expanded(
+              child: Text(
+                'Permission Required',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+            ),
           ],
         ),
         content: const Text(
           'This app needs permission to schedule exact alarms. '
-          'Please enable "Alarms & reminders" in the next screen.',
-          style: TextStyle(fontSize: 16),
+          'Please enable "Alarms & reminders" in the next screen to ensure '
+          'your reminders work correctly.',
+          style: TextStyle(fontSize: 15, height: 1.4),
         ),
         actions: [
           TextButton(
@@ -107,7 +134,7 @@ class _MyRemindersAppState extends State<MyRemindersApp> with WidgetsBindingObse
                 _permissionGranted = false;
               });
             },
-            child: const Text('Later'),
+            child: const Text('Later', style: TextStyle(fontSize: 15)),
           ),
           ElevatedButton(
             onPressed: () async {
@@ -118,14 +145,21 @@ class _MyRemindersAppState extends State<MyRemindersApp> with WidgetsBindingObse
                 await Future.delayed(const Duration(seconds: 1));
                 await _checkPermissions();
               } catch (e) {
-                print('Error requesting permission: $e');
+                print('❌ Error requesting permission: $e');
               }
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.orange,
               foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
             ),
-            child: const Text('Grant Permission'),
+            child: const Text(
+              'Grant Permission',
+              style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+            ),
           ),
         ],
       ),
@@ -138,7 +172,7 @@ class _MyRemindersAppState extends State<MyRemindersApp> with WidgetsBindingObse
       create: (_) => ReminderProvider(),
       child: MaterialApp(
         navigatorKey: navigatorKey,
-        title: 'My Reminders',
+        title: 'RemindMe',
         debugShowCheckedModeBanner: false,
         theme: AppTheme.lightTheme,
         home: const HomeScreen(),
