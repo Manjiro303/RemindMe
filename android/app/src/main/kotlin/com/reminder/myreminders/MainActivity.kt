@@ -123,6 +123,12 @@ class MainActivity: FlutterActivity() {
             Log.d(TAG, "Alarm Body: $alarmBody")
             Log.d(TAG, "Requires Captcha: $requiresCaptcha")
             
+            // Validate data before sending to Flutter
+            if (notificationId == 0 || alarmBody.isEmpty()) {
+                Log.e(TAG, "❌ Invalid alarm data - skipping")
+                return
+            }
+            
             if (methodChannel != null) {
                 Log.d(TAG, "✅ Sending to Flutter immediately")
                 methodChannel?.invokeMethod("onAlarmDetail", mapOf(
@@ -136,6 +142,7 @@ class MainActivity: FlutterActivity() {
                 pendingAlarmIntent = intent
             }
             
+            // Clear the action to prevent re-triggering
             intent.action = null
             
             val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
