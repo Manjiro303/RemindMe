@@ -8,6 +8,7 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.media.RingtoneManager
 import android.media.Ringtone
+import android.media.AudioManager
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import android.app.PendingIntent
@@ -25,22 +26,45 @@ class AlarmReceiver : BroadcastReceiver() {
         private const val TAG = "AlarmReceiver"
         private var ringtone: Ringtone? = null
         private var wakeLock: PowerManager.WakeLock? = null
-        private var stopHandler: Handler? = null
+        private var repeatHandler: Handler? = null
+        private var audioManager: AudioManager? = null
+        private var originalRingerMode: Int = AudioManager.RINGER_MODE_NORMAL
+        private var originalVolume: Int = 0
+        private var requiresCaptcha: Boolean = false
         
         fun stopRingtone() {
             try {
-                // Cancel auto-stop timer
-                stopHandler?.removeCallbacksAndMessages(null)
+                // Only stop if CAPTCHA is not required or has been solved
+                repeatHandler?.removeCallbacksAndMessages(null)
                 
                 ringtone?.stop()
                 ringtone = null
+                
+                // Restore original audio settings
+                audioManager?.let { am ->
+                    try {
+                        am.ringerMode = originalRingerMode
+                        am.setStreamVolume(
+                            AudioManager.STREAM_ALARM,
+                            originalVolume,
+                            0
+                        )
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error restoring audio settings: ${e.message}")
+                    }
+                }
+                audioManager = null
+                
                 wakeLock?.let {
                     if (it.isHeld) {
                         it.release()
                     }
                 }
                 wakeLock = null
-                Log.d(TAG, "🔇 Ringtone stopped and wake lock released")
+                
+                requiresCaptcha = false
+                
+                Log.d(TAG, "🔇 Ringtone stopped and settings restored")
             } catch (e: Exception) {
                 Log.e(TAG, "Error stopping ringtone: ${e.message}")
             }
@@ -55,13 +79,19 @@ class AlarmReceiver : BroadcastReceiver() {
         
         if (intent.action == "DISMISS_ALARM") {
             val notificationId = intent.getIntExtra("notification_id", 0)
-            Log.d(TAG, "🔕 Dismiss action received for notification $notificationId")
-            stopRingtone()
+            val hasCaptcha = intent.getBooleanExtra("requires_captcha", false)
             
-            // Clear notification
-            val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            if (notificationId != 0) {
-                notificationManager.cancel(notificationId)
+            Log.d(TAG, "🔕 Dismiss action received for notification $notificationId")
+            
+            // Only allow dismiss if no CAPTCHA required
+            if (!hasCaptcha) {
+                stopRingtone()
+                val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                if (notificationId != 0) {
+                    notificationManager.cancel(notificationId)
+                }
+            } else {
+                Log.d(TAG, "⚠️ Cannot dismiss - CAPTCHA required!")
             }
             return
         }
@@ -76,7 +106,7 @@ class AlarmReceiver : BroadcastReceiver() {
         )
         
         try {
-            wakeLock?.acquire(5 * 60 * 1000L) // 5 minutes max
+            wakeLock?.acquire(30 * 60 * 1000L) // 30 minutes max for CAPTCHA alarms
             Log.d(TAG, "✅ Wake lock acquired")
         } catch (e: Exception) {
             Log.e(TAG, "❌ Failed to acquire wake lock: ${e.message}")
@@ -90,7 +120,7 @@ class AlarmReceiver : BroadcastReceiver() {
             val days = intent.getIntArrayExtra("selectedDays") ?: intArrayOf()
             val hour = intent.getIntExtra("reminderHour", 0)
             val minute = intent.getIntExtra("reminderMinute", 0)
-            val requiresCaptcha = intent.getBooleanExtra("requiresCaptcha", false)
+            requiresCaptcha = intent.getBooleanExtra("requiresCaptcha", false)
             
             Log.d(TAG, "ID: $id")
             Log.d(TAG, "Title: $title")
@@ -117,9 +147,14 @@ class AlarmReceiver : BroadcastReceiver() {
             // Also show notification as backup
             showFullScreenNotification(context, id, title, body, requiresCaptcha)
             
-            // Play sound and vibrate
-            playAlarmSound(context)
+            // Play sound with persistence for CAPTCHA alarms
+            playAlarmSound(context, requiresCaptcha)
             vibrateDevice(context)
+            
+            // Force max volume if CAPTCHA required
+            if (requiresCaptcha) {
+                forceMaxVolume(context)
+            }
             
             Log.d(TAG, "✅ Alarm processing complete")
             
@@ -129,6 +164,32 @@ class AlarmReceiver : BroadcastReceiver() {
         }
         
         Log.d(TAG, "========================================")
+    }
+    
+    private fun forceMaxVolume(context: Context) {
+        try {
+            audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+            audioManager?.let { am ->
+                // Save original settings
+                originalRingerMode = am.ringerMode
+                originalVolume = am.getStreamVolume(AudioManager.STREAM_ALARM)
+                
+                // Force normal mode (not silent or vibrate)
+                am.ringerMode = AudioManager.RINGER_MODE_NORMAL
+                
+                // Set alarm volume to maximum
+                val maxVolume = am.getStreamMaxVolume(AudioManager.STREAM_ALARM)
+                am.setStreamVolume(
+                    AudioManager.STREAM_ALARM,
+                    maxVolume,
+                    AudioManager.FLAG_SHOW_UI
+                )
+                
+                Log.d(TAG, "🔊 Forced max volume - Original: $originalVolume, Max: $maxVolume")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ Error forcing volume: ${e.message}")
+        }
     }
     
     private fun launchFullScreenActivity(
@@ -316,18 +377,6 @@ class AlarmReceiver : BroadcastReceiver() {
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
             
-            val dismissIntent = Intent(context, AlarmReceiver::class.java).apply {
-                action = "DISMISS_ALARM"
-                putExtra("notification_id", id)
-            }
-            
-            val dismissPendingIntent = PendingIntent.getBroadcast(
-                context,
-                id + 10000,
-                dismissIntent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-            )
-            
             val notificationBuilder = NotificationCompat.Builder(context, "alarm_channel")
                 .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
                 .setContentTitle("⏰ $title")
@@ -340,12 +389,25 @@ class AlarmReceiver : BroadcastReceiver() {
                 .setContentIntent(openPendingIntent)
                 .setFullScreenIntent(openPendingIntent, true)
             
-            // Only add dismiss action if CAPTCHA is NOT required
+            // CRITICAL: Only add dismiss action if CAPTCHA is NOT required
             if (!requiresCaptcha) {
+                val dismissIntent = Intent(context, AlarmReceiver::class.java).apply {
+                    action = "DISMISS_ALARM"
+                    putExtra("notification_id", id)
+                    putExtra("requires_captcha", false)
+                }
+                
+                val dismissPendingIntent = PendingIntent.getBroadcast(
+                    context,
+                    id + 10000,
+                    dismissIntent,
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                )
+                
                 notificationBuilder.addAction(0, "Dismiss", dismissPendingIntent)
                 Log.d(TAG, "Added dismiss action (no CAPTCHA required)")
             } else {
-                Log.d(TAG, "CAPTCHA required - dismiss action NOT added")
+                Log.d(TAG, "🔒 CAPTCHA required - dismiss action NOT added, notification is PERSISTENT")
             }
             
             notificationManager.notify(id, notificationBuilder.build())
@@ -356,7 +418,7 @@ class AlarmReceiver : BroadcastReceiver() {
         }
     }
     
-    private fun playAlarmSound(context: Context) {
+    private fun playAlarmSound(context: Context, shouldRepeat: Boolean) {
         try {
             stopRingtone()
             
@@ -367,43 +429,81 @@ class AlarmReceiver : BroadcastReceiver() {
             if (uri != null) {
                 ringtone = RingtoneManager.getRingtone(context, uri)
                 ringtone?.play()
-                Log.d(TAG, "🎵 Sound playing")
+                Log.d(TAG, "🎵 Sound playing (Repeat: $shouldRepeat)")
                 
-                // Auto-stop after 5 minutes
-                stopHandler = Handler(Looper.getMainLooper())
-                stopHandler?.postDelayed({
-                    Log.d(TAG, "⏱️ Auto-stopping ringtone after 5 minutes")
-                    stopRingtone()
-                }, 5 * 60 * 1000L)
+                if (shouldRepeat) {
+                    // Repeat alarm continuously until CAPTCHA is solved
+                    repeatHandler = Handler(Looper.getMainLooper())
+                    scheduleRepeat(context, uri)
+                    Log.d(TAG, "🔁 Continuous repeat enabled - alarm will play until CAPTCHA solved")
+                } else {
+                    // Auto-stop after 5 minutes for non-CAPTCHA alarms
+                    repeatHandler = Handler(Looper.getMainLooper())
+                    repeatHandler?.postDelayed({
+                        Log.d(TAG, "⏱️ Auto-stopping ringtone after 5 minutes")
+                        stopRingtone()
+                    }, 5 * 60 * 1000L)
+                }
             }
         } catch (e: Exception) {
             Log.e(TAG, "❌ Error playing sound", e)
         }
     }
     
+    private fun scheduleRepeat(context: Context, uri: android.net.Uri) {
+        repeatHandler?.postDelayed({
+            try {
+                // Check if ringtone is still needed (CAPTCHA not solved)
+                if (requiresCaptcha && ringtone != null) {
+                    if (ringtone?.isPlaying == false) {
+                        ringtone?.play()
+                        Log.d(TAG, "🔁 Repeating alarm sound...")
+                    }
+                    // Schedule next repeat
+                    scheduleRepeat(context, uri)
+                } else {
+                    Log.d(TAG, "⏹️ Stopping repeat - CAPTCHA solved or alarm dismissed")
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "❌ Error in repeat: ${e.message}")
+            }
+        }, 30000L) // Repeat every 30 seconds
+    }
+    
     private fun vibrateDevice(context: Context) {
         try {
             val vibrator = context.getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
             
-            // Improved vibration pattern: longer and more noticeable
-            val pattern = longArrayOf(
-                0,    // Start immediately
-                1000, // Vibrate 1 second
-                500,  // Pause 0.5 seconds
-                1000, // Vibrate 1 second
-                500,  // Pause 0.5 seconds
-                1000  // Vibrate 1 second
-            )
+            // Longer vibration pattern for CAPTCHA alarms
+            val pattern = if (requiresCaptcha) {
+                longArrayOf(
+                    0,    // Start immediately
+                    1000, // Vibrate 1 second
+                    500,  // Pause 0.5 seconds
+                    1000, // Vibrate 1 second
+                    500,  // Pause 0.5 seconds
+                    1000, // Vibrate 1 second
+                    2000, // Pause 2 seconds
+                    1000  // Vibrate 1 second
+                )
+            } else {
+                longArrayOf(
+                    0,    // Start immediately
+                    1000, // Vibrate 1 second
+                    500,  // Pause 0.5 seconds
+                    1000  // Vibrate 1 second
+                )
+            }
             
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 vibrator.vibrate(
-                    VibrationEffect.createWaveform(pattern, -1)
+                    VibrationEffect.createWaveform(pattern, if (requiresCaptcha) 0 else -1)
                 )
             } else {
                 @Suppress("DEPRECATION")
-                vibrator.vibrate(pattern, -1)
+                vibrator.vibrate(pattern, if (requiresCaptcha) 0 else -1)
             }
-            Log.d(TAG, "📳 Vibrating")
+            Log.d(TAG, "📳 Vibrating (Continuous: $requiresCaptcha)")
         } catch (e: Exception) {
             Log.e(TAG, "❌ Error vibrating", e)
         }
