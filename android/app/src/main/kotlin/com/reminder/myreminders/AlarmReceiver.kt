@@ -15,6 +15,8 @@ import android.os.PowerManager
 import android.app.AlarmManager
 import android.os.VibrationEffect
 import android.os.Vibrator
+import android.os.Handler
+import android.os.Looper
 import java.util.Calendar
 
 class AlarmReceiver : BroadcastReceiver() {
@@ -23,9 +25,13 @@ class AlarmReceiver : BroadcastReceiver() {
         private const val TAG = "AlarmReceiver"
         private var ringtone: Ringtone? = null
         private var wakeLock: PowerManager.WakeLock? = null
+        private var stopHandler: Handler? = null
         
         fun stopRingtone() {
             try {
+                // Cancel auto-stop timer
+                stopHandler?.removeCallbacksAndMessages(null)
+                
                 ringtone?.stop()
                 ringtone = null
                 wakeLock?.let {
@@ -44,10 +50,19 @@ class AlarmReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         Log.d(TAG, "========================================")
         Log.d(TAG, "🔔 ALARM RECEIVED!")
+        Log.d(TAG, "Action: ${intent.action}")
         Log.d(TAG, "========================================")
         
         if (intent.action == "DISMISS_ALARM") {
+            val notificationId = intent.getIntExtra("notification_id", 0)
+            Log.d(TAG, "🔕 Dismiss action received for notification $notificationId")
             stopRingtone()
+            
+            // Clear notification
+            val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            if (notificationId != 0) {
+                notificationManager.cancel(notificationId)
+            }
             return
         }
         
@@ -59,7 +74,13 @@ class AlarmReceiver : BroadcastReceiver() {
             PowerManager.ON_AFTER_RELEASE,
             "RemindMe::FullWakeLock"
         )
-        wakeLock?.acquire(5 * 60 * 1000L) // 5 minutes max
+        
+        try {
+            wakeLock?.acquire(5 * 60 * 1000L) // 5 minutes max
+            Log.d(TAG, "✅ Wake lock acquired")
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ Failed to acquire wake lock: ${e.message}")
+        }
         
         try {
             val id = intent.getIntExtra("id", 0)
@@ -220,7 +241,7 @@ class AlarmReceiver : BroadcastReceiver() {
         }
         
         if (days.contains(currentDay) && todayAlarm.timeInMillis > now.timeInMillis + 5000) {
-            Log.d(TAG, "✓ Next occurrence: TODAY at ${hour}:${minute}")
+            Log.d(TAG, "✓ Next occurrence: TODAY at $hour:$minute")
             return todayAlarm
         }
         
@@ -241,7 +262,7 @@ class AlarmReceiver : BroadcastReceiver() {
             
             if (days.contains(checkDay)) {
                 val dayName = arrayOf("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")[checkDay]
-                Log.d(TAG, "✓ Next occurrence: $dayName ($daysAhead days) at ${hour}:${minute}")
+                Log.d(TAG, "✓ Next occurrence: $dayName ($daysAhead days) at $hour:$minute")
                 return checkDate
             }
         }
@@ -297,6 +318,7 @@ class AlarmReceiver : BroadcastReceiver() {
             
             val dismissIntent = Intent(context, AlarmReceiver::class.java).apply {
                 action = "DISMISS_ALARM"
+                putExtra("notification_id", id)
             }
             
             val dismissPendingIntent = PendingIntent.getBroadcast(
@@ -321,13 +343,16 @@ class AlarmReceiver : BroadcastReceiver() {
             // Only add dismiss action if CAPTCHA is NOT required
             if (!requiresCaptcha) {
                 notificationBuilder.addAction(0, "Dismiss", dismissPendingIntent)
+                Log.d(TAG, "Added dismiss action (no CAPTCHA required)")
+            } else {
+                Log.d(TAG, "CAPTCHA required - dismiss action NOT added")
             }
             
             notificationManager.notify(id, notificationBuilder.build())
             Log.d(TAG, "📱 Full-screen notification shown with ID: $id")
             
         } catch (e: Exception) {
-            Log.e(TAG, "Error showing notification", e)
+            Log.e(TAG, "❌ Error showing notification", e)
         }
     }
     
@@ -343,49 +368,69 @@ class AlarmReceiver : BroadcastReceiver() {
                 ringtone = RingtoneManager.getRingtone(context, uri)
                 ringtone?.play()
                 Log.d(TAG, "🎵 Sound playing")
+                
+                // Auto-stop after 5 minutes
+                stopHandler = Handler(Looper.getMainLooper())
+                stopHandler?.postDelayed({
+                    Log.d(TAG, "⏱️ Auto-stopping ringtone after 5 minutes")
+                    stopRingtone()
+                }, 5 * 60 * 1000L)
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error playing sound", e)
+            Log.e(TAG, "❌ Error playing sound", e)
         }
     }
     
     private fun vibrateDevice(context: Context) {
         try {
             val vibrator = context.getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
+            
+            // Improved vibration pattern: longer and more noticeable
+            val pattern = longArrayOf(
+                0,    // Start immediately
+                1000, // Vibrate 1 second
+                500,  // Pause 0.5 seconds
+                1000, // Vibrate 1 second
+                500,  // Pause 0.5 seconds
+                1000  // Vibrate 1 second
+            )
+            
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 vibrator.vibrate(
-                    VibrationEffect.createWaveform(
-                        longArrayOf(0, 500, 200, 500, 200, 500),
-                        -1
-                    )
+                    VibrationEffect.createWaveform(pattern, -1)
                 )
             } else {
                 @Suppress("DEPRECATION")
-                vibrator.vibrate(longArrayOf(0, 500, 200, 500, 200, 500), -1)
+                vibrator.vibrate(pattern, -1)
             }
             Log.d(TAG, "📳 Vibrating")
         } catch (e: Exception) {
-            Log.e(TAG, "Error vibrating", e)
+            Log.e(TAG, "❌ Error vibrating", e)
         }
     }
     
     private fun removeFromStorage(context: Context, id: Int) {
-        val prefs = context.getSharedPreferences("RemindMeAlarms", Context.MODE_PRIVATE)
-        val editor = prefs.edit()
-        
-        editor.remove("alarm_${id}_title")
-        editor.remove("alarm_${id}_body")
-        editor.remove("alarm_${id}_recurring")
-        editor.remove("alarm_${id}_days")
-        editor.remove("alarm_${id}_hour")
-        editor.remove("alarm_${id}_minute")
-        editor.remove("alarm_${id}_captcha")
-        
-        val ids = prefs.getStringSet("active_ids", mutableSetOf()) ?: mutableSetOf()
-        val newIds = ids.toMutableSet()
-        newIds.remove(id.toString())
-        editor.putStringSet("active_ids", newIds)
-        
-        editor.apply()
+        try {
+            val prefs = context.getSharedPreferences("RemindMeAlarms", Context.MODE_PRIVATE)
+            val editor = prefs.edit()
+            
+            editor.remove("alarm_${id}_title")
+            editor.remove("alarm_${id}_body")
+            editor.remove("alarm_${id}_recurring")
+            editor.remove("alarm_${id}_days")
+            editor.remove("alarm_${id}_hour")
+            editor.remove("alarm_${id}_minute")
+            editor.remove("alarm_${id}_captcha")
+            
+            val ids = prefs.getStringSet("active_ids", mutableSetOf()) ?: mutableSetOf()
+            val newIds = ids.toMutableSet()
+            newIds.remove(id.toString())
+            editor.putStringSet("active_ids", newIds)
+            
+            editor.apply()
+            Log.d(TAG, "🗑️ Removed alarm $id from storage")
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ Error removing from storage", e)
+        }
     }
 }
