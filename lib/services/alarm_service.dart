@@ -5,6 +5,20 @@ import '../models/reminder_model.dart';
 class AlarmService {
   static const platform = MethodChannel('com.reminder.myreminders/alarm');
 
+  /// Generate unique alarm ID from UUID to prevent collisions
+  int _generateUniqueAlarmId(String uuid) {
+    try {
+      // Convert UUID to unique integer ID
+      // Take first 8 hex chars and convert to int
+      final hex = uuid.replaceAll('-', '').substring(0, 8);
+      return int.parse(hex, radix: 16) % 2147483647;
+    } catch (e) {
+      print('❌ Error generating alarm ID: $e');
+      // Fallback to hashCode if UUID parsing fails
+      return uuid.hashCode.abs() % 2147483647;
+    }
+  }
+
   Future<bool> scheduleAlarm(ReminderModel reminder) async {
     try {
       print('\n========================================');
@@ -26,8 +40,9 @@ class AlarmService {
       print('⏰ Will fire in $minutesUntil minutes');
       print('⏰ At: $alarmTime');
 
-      final alarmId = reminder.id.hashCode.abs() % 2147483647;
-      print('🆔 Alarm ID: $alarmId');
+      // Use improved ID generation
+      final alarmId = _generateUniqueAlarmId(reminder.id);
+      print('🆔 Alarm ID: $alarmId (from UUID: ${reminder.id})');
 
       final result = await platform.invokeMethod('scheduleAlarm', {
         'alarmId': alarmId,
@@ -47,7 +62,7 @@ class AlarmService {
       return result == true;
       
     } catch (e, stackTrace) {
-      print('❌ ERROR: $e');
+      print('❌ ERROR scheduling alarm: $e');
       print('Stack: $stackTrace');
       return false;
     }
@@ -56,8 +71,9 @@ class AlarmService {
   DateTime _calculateAlarmTime(ReminderModel reminder) {
     final now = DateTime.now();
     
+    // Handle one-time reminders with specific date
     if (!reminder.isRecurring && reminder.specificDate != null) {
-      return DateTime(
+      final alarmTime = DateTime(
         reminder.specificDate!.year,
         reminder.specificDate!.month,
         reminder.specificDate!.day,
@@ -66,8 +82,11 @@ class AlarmService {
         0,
         0,
       );
+      // Ensure we use local time zone
+      return alarmTime.toLocal();
     }
     
+    // Handle recurring reminders
     final days = reminder.days.isEmpty ? [0, 1, 2, 3, 4, 5, 6] : reminder.days;
     
     final todayAlarm = DateTime(
@@ -80,14 +99,17 @@ class AlarmService {
       0,
     );
     
+    // Convert current day to 0-6 format (Mon=0, Sun=6)
     final todayDay = now.weekday == 7 ? 6 : now.weekday - 1;
     
+    // Check if alarm should fire today
     if (days.contains(todayDay) && 
         todayAlarm.isAfter(now.add(const Duration(seconds: 5)))) {
       print('✓ Next occurrence: TODAY at ${reminder.time.hour}:${reminder.time.minute}');
       return todayAlarm;
     }
     
+    // Find next occurrence in the next 7 days
     for (int daysAhead = 1; daysAhead <= 7; daysAhead++) {
       final checkDate = now.add(Duration(days: daysAhead));
       final checkDay = checkDate.weekday == 7 ? 6 : checkDate.weekday - 1;
@@ -109,20 +131,21 @@ class AlarmService {
       }
     }
     
+    // Fallback: schedule for tomorrow (shouldn't reach here normally)
     print('⚠️ Using fallback: tomorrow');
     return todayAlarm.add(const Duration(days: 1));
   }
 
   Future<void> cancelAlarm(String reminderId) async {
     try {
-      final alarmId = reminderId.hashCode.abs() % 2147483647;
-      print('🗑️ Cancelling alarm ID: $alarmId');
+      final alarmId = _generateUniqueAlarmId(reminderId);
+      print('🗑️ Cancelling alarm ID: $alarmId (UUID: $reminderId)');
       
       await platform.invokeMethod('cancelAlarm', {'alarmId': alarmId});
-      print('✅ Cancelled');
+      print('✅ Alarm cancelled successfully');
       
     } catch (e) {
-      print('❌ Error cancelling: $e');
+      print('❌ Error cancelling alarm: $e');
     }
   }
 
@@ -140,7 +163,7 @@ class AlarmService {
       final result = await platform.invokeMethod('canScheduleExactAlarms');
       return result == true;
     } catch (e) {
-      print('Error checking permission: $e');
+      print('❌ Error checking exact alarm permission: $e');
       return false;
     }
   }
@@ -149,7 +172,7 @@ class AlarmService {
     try {
       await platform.invokeMethod('requestPermission');
     } catch (e) {
-      print('Error requesting permission: $e');
+      print('❌ Error requesting permission: $e');
     }
   }
 
