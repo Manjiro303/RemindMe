@@ -14,7 +14,8 @@ class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action == Intent.ACTION_BOOT_COMPLETED ||
             intent.action == Intent.ACTION_LOCKED_BOOT_COMPLETED ||
-            intent.action == "android.intent.action.QUICKBOOT_POWERON") {
+            intent.action == "android.intent.action.QUICKBOOT_POWERON" ||
+            intent.action == "android.intent.action.MY_PACKAGE_REPLACED") {
             
             Log.d(TAG, "========================================")
             Log.d(TAG, "📱 DEVICE BOOTED - Action: ${intent.action}")
@@ -31,11 +32,23 @@ class BootReceiver : BroadcastReceiver() {
             
             Log.d(TAG, "Found ${activeIds.size} alarms to reschedule")
             
+            if (activeIds.isEmpty()) {
+                Log.d(TAG, "No alarms to reschedule")
+                return
+            }
+            
             var successCount = 0
+            var skipCount = 0
             
             for (idStr in activeIds) {
                 try {
-                    val id = idStr.toInt()
+                    val id = idStr.toIntOrNull()
+                    if (id == null) {
+                        Log.w(TAG, "⚠️ Invalid ID format: $idStr - skipping")
+                        skipCount++
+                        continue
+                    }
+                    
                     val title = prefs.getString("alarm_${id}_title", null)
                     val body = prefs.getString("alarm_${id}_body", null)
                     val isRecurring = prefs.getBoolean("alarm_${id}_recurring", false)
@@ -45,7 +58,8 @@ class BootReceiver : BroadcastReceiver() {
                     val requiresCaptcha = prefs.getBoolean("alarm_${id}_captcha", false)
                     
                     if (title == null || body == null || hour < 0 || minute < 0) {
-                        Log.w(TAG, "Incomplete data for alarm $id - skipping")
+                        Log.w(TAG, "⚠️ Incomplete data for alarm $id - skipping")
+                        skipCount++
                         continue
                     }
                     
@@ -61,22 +75,29 @@ class BootReceiver : BroadcastReceiver() {
                             } else {
                                 Log.e(TAG, "❌ Failed to reschedule alarm $id")
                             }
+                        } else {
+                            Log.w(TAG, "⚠️ Alarm $id has no valid days - skipping")
+                            skipCount++
                         }
                     } else {
                         Log.d(TAG, "⏹️ Alarm $id is one-time - skipping")
+                        skipCount++
                     }
                     
                 } catch (e: Exception) {
-                    Log.e(TAG, "Error rescheduling alarm $idStr", e)
+                    Log.e(TAG, "❌ Error rescheduling alarm $idStr", e)
                 }
             }
             
             Log.d(TAG, "========================================")
-            Log.d(TAG, "✅ Rescheduled $successCount/${activeIds.size} recurring alarms")
+            Log.d(TAG, "✅ Rescheduled: $successCount")
+            Log.d(TAG, "⏭️ Skipped: $skipCount")
+            Log.d(TAG, "📊 Total: ${activeIds.size}")
             Log.d(TAG, "========================================")
             
         } catch (e: Exception) {
-            Log.e(TAG, "Error in rescheduleAll", e)
+            Log.e(TAG, "❌ Error in rescheduleAll", e)
+            e.printStackTrace()
         }
     }
     
@@ -94,7 +115,7 @@ class BootReceiver : BroadcastReceiver() {
             val nextTime = findNext(days, hour, minute)
             
             if (nextTime == null) {
-                Log.e(TAG, "Could not find next occurrence for alarm $id")
+                Log.e(TAG, "❌ Could not find next occurrence for alarm $id")
                 return false
             }
             
@@ -147,7 +168,7 @@ class BootReceiver : BroadcastReceiver() {
             
             true
         } catch (e: Exception) {
-            Log.e(TAG, "Error scheduling alarm $id", e)
+            Log.e(TAG, "❌ Error scheduling alarm $id", e)
             false
         }
     }
