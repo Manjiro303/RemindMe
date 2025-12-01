@@ -19,6 +19,7 @@ import android.os.Vibrator
 import android.os.Handler
 import android.os.Looper
 import java.util.Calendar
+import android.content.IntentFilter
 
 class AlarmReceiver : BroadcastReceiver() {
     
@@ -31,14 +32,27 @@ class AlarmReceiver : BroadcastReceiver() {
         private var originalRingerMode: Int = AudioManager.RINGER_MODE_NORMAL
         private var originalVolume: Int = 0
         private var requiresCaptcha: Boolean = false
+        private var vibrator: Vibrator? = null
+        private var volumeMonitorHandler: Handler? = null
+        private var context: Context? = null
         
         fun stopRingtone() {
             try {
                 // Only stop if CAPTCHA is not required or has been solved
+                if (requiresCaptcha) {
+                    Log.d(TAG, "🔒 CAPTCHA still required - cannot stop ringtone!")
+                    return
+                }
+                
                 repeatHandler?.removeCallbacksAndMessages(null)
+                volumeMonitorHandler?.removeCallbacksAndMessages(null)
                 
                 ringtone?.stop()
                 ringtone = null
+                
+                // Stop vibration
+                vibrator?.cancel()
+                vibrator = null
                 
                 // Restore original audio settings
                 audioManager?.let { am ->
@@ -63,11 +77,18 @@ class AlarmReceiver : BroadcastReceiver() {
                 wakeLock = null
                 
                 requiresCaptcha = false
+                context = null
                 
                 Log.d(TAG, "🔇 Ringtone stopped and settings restored")
             } catch (e: Exception) {
                 Log.e(TAG, "Error stopping ringtone: ${e.message}")
             }
+        }
+        
+        fun captchaSolved() {
+            Log.d(TAG, "✅ CAPTCHA SOLVED - Stopping alarm")
+            requiresCaptcha = false
+            stopRingtone()
         }
     }
     
@@ -96,6 +117,9 @@ class AlarmReceiver : BroadcastReceiver() {
             return
         }
         
+        // Store context for later use
+        Companion.context = context.applicationContext
+        
         // Acquire FULL wake lock with screen and keyboard wake up
         val powerManager = context.getSystemService(Context.POWER_SERVICE) as PowerManager
         wakeLock = powerManager.newWakeLock(
@@ -106,7 +130,7 @@ class AlarmReceiver : BroadcastReceiver() {
         )
         
         try {
-            wakeLock?.acquire(30 * 60 * 1000L) // 30 minutes max for CAPTCHA alarms
+            wakeLock?.acquire(2 * 60 * 60 * 1000L) // 2 hours max for CAPTCHA alarms
             Log.d(TAG, "✅ Wake lock acquired")
         } catch (e: Exception) {
             Log.e(TAG, "❌ Failed to acquire wake lock: ${e.message}")
@@ -149,11 +173,12 @@ class AlarmReceiver : BroadcastReceiver() {
             
             // Play sound with persistence for CAPTCHA alarms
             playAlarmSound(context, requiresCaptcha)
-            vibrateDevice(context)
+            vibrateDevice(context, requiresCaptcha)
             
-            // Force max volume if CAPTCHA required
+            // Force max volume if CAPTCHA required and monitor volume changes
             if (requiresCaptcha) {
                 forceMaxVolume(context)
+                startVolumeMonitoring(context)
             }
             
             Log.d(TAG, "✅ Alarm processing complete")
@@ -164,6 +189,52 @@ class AlarmReceiver : BroadcastReceiver() {
         }
         
         Log.d(TAG, "========================================")
+    }
+    
+    private fun startVolumeMonitoring(context: Context) {
+        // Monitor and restore volume every 2 seconds if user tries to change it
+        volumeMonitorHandler = Handler(Looper.getMainLooper())
+        volumeMonitorHandler?.post(object : Runnable {
+            override fun run() {
+                if (requiresCaptcha && audioManager != null) {
+                    try {
+                        // Check if volume was changed
+                        val currentVolume = audioManager!!.getStreamVolume(AudioManager.STREAM_ALARM)
+                        val maxVolume = audioManager!!.getStreamMaxVolume(AudioManager.STREAM_ALARM)
+                        
+                        if (currentVolume < maxVolume) {
+                            Log.d(TAG, "🔊 Volume changed detected! Restoring max volume...")
+                            audioManager!!.setStreamVolume(
+                                AudioManager.STREAM_ALARM,
+                                maxVolume,
+                                AudioManager.FLAG_SHOW_UI
+                            )
+                        }
+                        
+                        // Check if ringer mode was changed
+                        val currentMode = audioManager!!.ringerMode
+                        if (currentMode != AudioManager.RINGER_MODE_NORMAL) {
+                            Log.d(TAG, "📢 Ringer mode changed! Restoring normal mode...")
+                            audioManager!!.ringerMode = AudioManager.RINGER_MODE_NORMAL
+                        }
+                        
+                        // Restart ringtone if it stopped playing
+                        if (ringtone?.isPlaying == false) {
+                            Log.d(TAG, "🎵 Ringtone stopped - restarting...")
+                            ringtone?.play()
+                        }
+                        
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error in volume monitoring: ${e.message}")
+                    }
+                    
+                    // Schedule next check
+                    volumeMonitorHandler?.postDelayed(this, 2000)
+                } else {
+                    Log.d(TAG, "⏹️ Stopping volume monitoring")
+                }
+            }
+        })
     }
     
     private fun forceMaxVolume(context: Context) {
@@ -470,40 +541,31 @@ class AlarmReceiver : BroadcastReceiver() {
         }, 30000L) // Repeat every 30 seconds
     }
     
-    private fun vibrateDevice(context: Context) {
+    private fun vibrateDevice(context: Context, continuous: Boolean) {
         try {
-            val vibrator = context.getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
+            vibrator = context.getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
             
-            // Longer vibration pattern for CAPTCHA alarms
-            val pattern = if (requiresCaptcha) {
-                longArrayOf(
-                    0,    // Start immediately
-                    1000, // Vibrate 1 second
-                    500,  // Pause 0.5 seconds
-                    1000, // Vibrate 1 second
-                    500,  // Pause 0.5 seconds
-                    1000, // Vibrate 1 second
-                    2000, // Pause 2 seconds
-                    1000  // Vibrate 1 second
-                )
-            } else {
-                longArrayOf(
-                    0,    // Start immediately
-                    1000, // Vibrate 1 second
-                    500,  // Pause 0.5 seconds
-                    1000  // Vibrate 1 second
-                )
-            }
+            // Longer vibration pattern
+            val pattern = longArrayOf(
+                0,    // Start immediately
+                1000, // Vibrate 1 second
+                500,  // Pause 0.5 seconds
+                1000, // Vibrate 1 second
+                500,  // Pause 0.5 seconds
+                1000, // Vibrate 1 second
+                2000  // Pause 2 seconds before repeating
+            )
             
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                vibrator.vibrate(
-                    VibrationEffect.createWaveform(pattern, if (requiresCaptcha) 0 else -1)
+                // -1 means play once, 0 means repeat from beginning
+                vibrator?.vibrate(
+                    VibrationEffect.createWaveform(pattern, if (continuous) 0 else -1)
                 )
             } else {
                 @Suppress("DEPRECATION")
-                vibrator.vibrate(pattern, if (requiresCaptcha) 0 else -1)
+                vibrator?.vibrate(pattern, if (continuous) 0 else -1)
             }
-            Log.d(TAG, "📳 Vibrating (Continuous: $requiresCaptcha)")
+            Log.d(TAG, "📳 Vibrating (Continuous: $continuous)")
         } catch (e: Exception) {
             Log.e(TAG, "❌ Error vibrating", e)
         }
