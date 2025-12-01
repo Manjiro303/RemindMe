@@ -320,7 +320,7 @@ class MainActivity: FlutterActivity() {
         editor.remove("alarm_${id}_minute")
         editor.remove("alarm_${id}_captcha")
         
-        val ids = prefs.getStringSet("active_ids", mutableSetOf()) ?: mutableSetSet()
+        val ids = prefs.getStringSet("active_ids", mutableSetOf()) ?: mutableSetOf()
         val newIds = ids.toMutableSet()
         newIds.remove(id.toString())
         editor.putStringSet("active_ids", newIds)
