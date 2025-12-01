@@ -266,7 +266,7 @@ class AlarmReceiver : BroadcastReceiver() {
                     NotificationManager.IMPORTANCE_HIGH
                 ).apply {
                     description = "Alarm notifications"
-                    enableVibration = true
+                    enableVibration(true)
                     setBypassDnd(true)
                     lockscreenVisibility = NotificationCompat.VISIBILITY_PUBLIC
                     setSound(
