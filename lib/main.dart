@@ -37,7 +37,6 @@ class MyRemindersApp extends StatefulWidget {
 class _MyRemindersAppState extends State<MyRemindersApp> with WidgetsBindingObserver {
   static const platform = MethodChannel('com.reminder.myreminders/alarm');
   final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
-  bool _permissionChecked = false;
   bool _permissionGranted = false;
 
   @override
@@ -76,7 +75,6 @@ class _MyRemindersAppState extends State<MyRemindersApp> with WidgetsBindingObse
       }
       
       setState(() {
-        _permissionChecked = true;
         _permissionGranted = canSchedule == true;
       });
       
@@ -93,7 +91,6 @@ class _MyRemindersAppState extends State<MyRemindersApp> with WidgetsBindingObse
     } catch (e) {
       print('❌ Error checking permissions: $e');
       setState(() {
-        _permissionChecked = true;
         _permissionGranted = false;
       });
     }
