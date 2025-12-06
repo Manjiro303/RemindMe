@@ -19,7 +19,7 @@ class AlarmDetailScreen extends StatefulWidget {
   State<AlarmDetailScreen> createState() => _AlarmDetailScreenState();
 }
 
-class _AlarmDetailScreenState extends State<AlarmDetailScreen> with SingleTickerProviderStateMixin {
+class _AlarmDetailScreenState extends State<AlarmDetailScreen> with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   bool _showCaptcha = false;
   late AnimationController _animationController;
   late Animation<double> _scaleAnimation;
@@ -29,11 +29,17 @@ class _AlarmDetailScreenState extends State<AlarmDetailScreen> with SingleTicker
   void initState() {
     super.initState();
     
-    // Prevent back button
+    // Add lifecycle observer to prevent backgrounding
+    WidgetsBinding.instance.addObserver(this);
+    
+    // Prevent back button and hide system UI
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     
     // If CAPTCHA is required, show it immediately
     if (widget.reminder.requiresCaptcha) {
+      // Prevent app from being minimized or closed
+      _preventAppMinimization();
+      
       Future.delayed(const Duration(milliseconds: 100), () {
         if (mounted) {
           setState(() => _showCaptcha = true);
@@ -55,11 +61,135 @@ class _AlarmDetailScreenState extends State<AlarmDetailScreen> with SingleTicker
     );
   }
 
+  void _preventAppMinimization() {
+    // Keep screen on and prevent going to background
+    SystemChrome.setEnabledSystemUIMode(
+      SystemUiMode.immersiveSticky,
+      overlays: [],
+    );
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    
+    // If CAPTCHA is required and app goes to background, bring it back
+    if (widget.reminder.requiresCaptcha && _showCaptcha) {
+      if (state == AppLifecycleState.paused || 
+          state == AppLifecycleState.inactive ||
+          state == AppLifecycleState.hidden) {
+        print('⚠️ User tried to minimize app with CAPTCHA active - preventing!');
+        
+        // Try to bring app back to foreground
+        Future.delayed(const Duration(milliseconds: 100), () {
+          if (mounted) {
+            SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+          }
+        });
+      }
+    }
+  }
+
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _animationController.dispose();
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     super.dispose();
+  }
+
+  Future<bool> _onWillPop() async {
+    // Prevent back navigation if CAPTCHA is required
+    if (widget.reminder.requiresCaptcha && _showCaptcha) {
+      _showCannotDismissDialog();
+      return false;
+    }
+    
+    // Allow dismissal for non-CAPTCHA alarms
+    await _handleDismissWithoutCaptcha();
+    return true;
+  }
+
+  void _showCannotDismissDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => PopScope(
+        canPop: false,
+        child: AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          backgroundColor: Colors.red.shade50,
+          title: Row(
+            children: [
+              Icon(Icons.warning_amber_rounded, color: Colors.red.shade700, size: 32),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Text(
+                  'CAPTCHA Required',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+              ),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'You must solve the CAPTCHA to dismiss this alarm.',
+                style: TextStyle(
+                  fontSize: 16,
+                  color: Colors.red.shade900,
+                  height: 1.4,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.red.shade100,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.red.shade300),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.block, color: Colors.red.shade700, size: 20),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Closing the app, silencing, or going back is disabled until CAPTCHA is solved.',
+                        style: TextStyle(
+                          color: Colors.red.shade700,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red.shade700,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              child: const Text(
+                'OK, I understand',
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
@@ -68,10 +198,10 @@ class _AlarmDetailScreenState extends State<AlarmDetailScreen> with SingleTicker
     if (_showCaptcha && widget.reminder.requiresCaptcha) {
       return PopScope(
         canPop: false,
-        onPopInvoked: (didPop) async {
-          if (didPop) return;
-          // Prevent back navigation
-          return;
+        onPopInvokedWithResult: (bool didPop, dynamic result) async {
+          if (!didPop && widget.reminder.requiresCaptcha) {
+            _showCannotDismissDialog();
+          }
         },
         child: CaptchaScreen(
           onSuccess: _handleDismissAfterCaptcha,
@@ -84,15 +214,15 @@ class _AlarmDetailScreenState extends State<AlarmDetailScreen> with SingleTicker
     final priorityColor = AppConstants.getPriorityColors()[widget.reminder.priority]!;
 
     return PopScope(
-      canPop: false,
-      onPopInvoked: (didPop) async {
-        if (didPop) return;
-        // If CAPTCHA is required, don't allow back
-        if (widget.reminder.requiresCaptcha) {
-          return;
+      canPop: !widget.reminder.requiresCaptcha,
+      onPopInvokedWithResult: (bool didPop, dynamic result) async {
+        if (!didPop) {
+          if (widget.reminder.requiresCaptcha) {
+            _showCannotDismissDialog();
+          } else {
+            await _handleDismissWithoutCaptcha();
+          }
         }
-        // Otherwise allow dismissal
-        await _handleDismissWithoutCaptcha();
       },
       child: Scaffold(
         body: Container(
@@ -264,22 +394,35 @@ class _AlarmDetailScreenState extends State<AlarmDetailScreen> with SingleTicker
                                 Container(
                                   padding: const EdgeInsets.all(12),
                                   decoration: BoxDecoration(
-                                    color: Colors.blue.shade50,
+                                    color: Colors.red.shade50,
                                     borderRadius: BorderRadius.circular(12),
-                                    border: Border.all(color: Colors.blue.shade200),
+                                    border: Border.all(color: Colors.red.shade200, width: 2),
                                   ),
-                                  child: Row(
+                                  child: Column(
                                     children: [
-                                      Icon(Icons.security, color: Colors.blue.shade700, size: 20),
-                                      const SizedBox(width: 8),
-                                      Expanded(
-                                        child: Text(
-                                          'CAPTCHA required to dismiss',
-                                          style: TextStyle(
-                                            color: Colors.blue.shade700,
-                                            fontWeight: FontWeight.bold,
-                                            fontSize: 13,
+                                      Row(
+                                        children: [
+                                          Icon(Icons.security, color: Colors.red.shade700, size: 20),
+                                          const SizedBox(width: 8),
+                                          Expanded(
+                                            child: Text(
+                                              'CAPTCHA Required',
+                                              style: TextStyle(
+                                                color: Colors.red.shade700,
+                                                fontWeight: FontWeight.bold,
+                                                fontSize: 14,
+                                              ),
+                                            ),
                                           ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 8),
+                                      Text(
+                                        'You must solve a math problem to dismiss this alarm. Going back, closing the app, or silencing your phone is disabled.',
+                                        style: TextStyle(
+                                          color: Colors.red.shade700,
+                                          fontSize: 12,
+                                          height: 1.3,
                                         ),
                                       ),
                                     ],
