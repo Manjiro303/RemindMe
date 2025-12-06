@@ -9,6 +9,7 @@ import '../utils/constants.dart';
 import 'add_edit_reminder_screen.dart';
 import 'alarm_detail_screen.dart';
 import 'captcha_screen.dart';
+import 'voice_command_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -214,6 +215,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       appBar: AppBar(
         title: const Text('🔔 My Reminders'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.mic),
+            tooltip: 'Voice Command',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const VoiceCommandScreen(),
+                ),
+              );
+            },
+          ),
           PopupMenuButton<String>(
             icon: const Icon(Icons.filter_list),
             onSelected: (value) {
