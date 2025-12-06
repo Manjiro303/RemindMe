@@ -98,18 +98,6 @@ class _AlarmDetailScreenState extends State<AlarmDetailScreen> with SingleTicker
     super.dispose();
   }
 
-  Future<bool> _onWillPop() async {
-    // Prevent back navigation if CAPTCHA is required
-    if (widget.reminder.requiresCaptcha && _showCaptcha) {
-      _showCannotDismissDialog();
-      return false;
-    }
-    
-    // Allow dismissal for non-CAPTCHA alarms
-    await _handleDismissWithoutCaptcha();
-    return true;
-  }
-
   void _showCannotDismissDialog() {
     showDialog(
       context: context,
