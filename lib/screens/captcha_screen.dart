@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'dart:math' as math;
 
 class CaptchaScreen extends StatefulWidget {
@@ -15,7 +16,7 @@ class CaptchaScreen extends StatefulWidget {
   State<CaptchaScreen> createState() => _CaptchaScreenState();
 }
 
-class _CaptchaScreenState extends State<CaptchaScreen> with SingleTickerProviderStateMixin {
+class _CaptchaScreenState extends State<CaptchaScreen> with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   late int _num1;
   late int _num2;
   late String _operator;
@@ -30,6 +31,13 @@ class _CaptchaScreenState extends State<CaptchaScreen> with SingleTickerProvider
   @override
   void initState() {
     super.initState();
+    
+    // Add lifecycle observer
+    WidgetsBinding.instance.addObserver(this);
+    
+    // Prevent system UI and back button
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+    
     _generateCaptcha();
     _shakeController = AnimationController(
       vsync: this,
@@ -37,6 +45,90 @@ class _CaptchaScreenState extends State<CaptchaScreen> with SingleTickerProvider
     );
     _shakeAnimation = Tween<double>(begin: 0, end: 10).animate(
       CurvedAnimation(parent: _shakeController, curve: Curves.elasticIn),
+    );
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _answerController.dispose();
+    _shakeController.dispose();
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    
+    // Prevent app from going to background
+    if (state == AppLifecycleState.paused || 
+        state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.hidden) {
+      print('⚠️ User tried to minimize CAPTCHA screen - preventing!');
+      
+      // Try to bring app back to foreground
+      Future.delayed(const Duration(milliseconds: 100), () {
+        if (mounted) {
+          SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+        }
+      });
+      
+      // Show warning dialog
+      if (mounted) {
+        _showCannotMinimizeWarning();
+      }
+    }
+  }
+
+  void _showCannotMinimizeWarning() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => PopScope(
+        canPop: false,
+        child: AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          backgroundColor: Colors.red.shade50,
+          title: Row(
+            children: [
+              Icon(Icons.warning_amber_rounded, color: Colors.red.shade700, size: 32),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Text(
+                  'Cannot Minimize',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+              ),
+            ],
+          ),
+          content: Text(
+            'You must solve the CAPTCHA before closing or minimizing the app. The alarm will continue until the CAPTCHA is solved.',
+            style: TextStyle(
+              fontSize: 16,
+              color: Colors.red.shade900,
+              height: 1.4,
+            ),
+          ),
+          actions: [
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red.shade700,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              child: const Text(
+                'Understood',
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -183,6 +275,11 @@ class _CaptchaScreenState extends State<CaptchaScreen> with SingleTickerProvider
   Widget build(BuildContext context) {
     return PopScope(
       canPop: false,
+      onPopInvokedWithResult: (bool didPop, dynamic result) async {
+        if (!didPop) {
+          _showCannotMinimizeWarning();
+        }
+      },
       child: Scaffold(
         body: Container(
           decoration: BoxDecoration(
@@ -252,6 +349,34 @@ class _CaptchaScreenState extends State<CaptchaScreen> with SingleTickerProvider
                           fontWeight: FontWeight.w500,
                         ),
                         textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 8),
+
+                      // Warning about minimizing
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: Colors.red.shade700.withOpacity(0.9),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.block, color: Colors.white, size: 18),
+                            const SizedBox(width: 8),
+                            Flexible(
+                              child: Text(
+                                'Cannot close or minimize until solved',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                                textAlign: TextAlign.center,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                       const SizedBox(height: 32),
 
@@ -444,12 +569,5 @@ class _CaptchaScreenState extends State<CaptchaScreen> with SingleTickerProvider
         ),
       ),
     );
-  }
-
-  @override
-  void dispose() {
-    _answerController.dispose();
-    _shakeController.dispose();
-    super.dispose();
   }
 }
