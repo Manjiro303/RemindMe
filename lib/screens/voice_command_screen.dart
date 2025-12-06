@@ -4,6 +4,7 @@ import 'package:uuid/uuid.dart';
 import '../models/reminder_model.dart';
 import '../providers/reminder_provider.dart';
 import '../services/voice_command_service.dart';
+import '../services/alarm_service.dart';
 
 class VoiceCommandScreen extends StatefulWidget {
   const VoiceCommandScreen({super.key});
@@ -15,6 +16,7 @@ class VoiceCommandScreen extends StatefulWidget {
 class _VoiceCommandScreenState extends State<VoiceCommandScreen>
     with SingleTickerProviderStateMixin {
   final VoiceCommandService _voiceService = VoiceCommandService();
+  final AlarmService _alarmService = AlarmService();
   
   bool _isListening = false;
   bool _isProcessing = false;
@@ -123,17 +125,31 @@ class _VoiceCommandScreenState extends State<VoiceCommandScreen>
       enabled: true,
     );
 
+    // Add reminder to provider (this saves to storage)
     await provider.addReminder(reminder);
 
+    // Explicitly schedule the alarm for this reminder
+    print('🎤 Voice Command: Scheduling alarm for new reminder');
+    final scheduled = await _alarmService.scheduleAlarm(reminder);
+    
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('✅ Reminder created successfully!'),
-          backgroundColor: Colors.green,
-        ),
-      );
-      
-      Navigator.pop(context);
+      if (scheduled) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('✅ Reminder created and alarm scheduled!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+        Navigator.pop(context);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('⚠️ Reminder created but alarm scheduling failed. Please check permissions.'),
+            backgroundColor: Colors.orange,
+            duration: Duration(seconds: 4),
+          ),
+        );
+      }
     }
   }
 
