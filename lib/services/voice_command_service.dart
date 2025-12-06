@@ -45,9 +45,11 @@ class VoiceCommandService {
       },
       listenFor: const Duration(seconds: 10),
       pauseFor: const Duration(seconds: 3),
-      partialResults: false,
-      cancelOnError: true,
-      listenMode: stt.ListenMode.confirmation,
+      listenOptions: stt.SpeechListenOptions(
+        partialResults: false,
+        cancelOnError: true,
+        listenMode: stt.ListenMode.confirmation,
+      ),
     );
     
     // Wait for recognition to complete
