@@ -20,6 +20,7 @@ import android.os.Handler
 import android.os.Looper
 import java.util.Calendar
 import android.content.IntentFilter
+import android.provider.Settings
 
 class AlarmReceiver : BroadcastReceiver() {
     
@@ -34,7 +35,9 @@ class AlarmReceiver : BroadcastReceiver() {
         private var requiresCaptcha: Boolean = false
         private var vibrator: Vibrator? = null
         private var volumeMonitorHandler: Handler? = null
+        private var ringerModeMonitorHandler: Handler? = null
         private var context: Context? = null
+        private var volumeObserverRegistered = false
         
         fun stopRingtone() {
             try {
@@ -46,6 +49,7 @@ class AlarmReceiver : BroadcastReceiver() {
                 
                 repeatHandler?.removeCallbacksAndMessages(null)
                 volumeMonitorHandler?.removeCallbacksAndMessages(null)
+                ringerModeMonitorHandler?.removeCallbacksAndMessages(null)
                 
                 ringtone?.stop()
                 ringtone = null
@@ -77,6 +81,7 @@ class AlarmReceiver : BroadcastReceiver() {
                 wakeLock = null
                 
                 requiresCaptcha = false
+                volumeObserverRegistered = false
                 context = null
                 
                 Log.d(TAG, "🔇 Ringtone stopped and settings restored")
@@ -179,6 +184,7 @@ class AlarmReceiver : BroadcastReceiver() {
             if (requiresCaptcha) {
                 forceMaxVolume(context)
                 startVolumeMonitoring(context)
+                startRingerModeMonitoring(context)
             }
             
             Log.d(TAG, "✅ Alarm processing complete")
@@ -191,8 +197,54 @@ class AlarmReceiver : BroadcastReceiver() {
         Log.d(TAG, "========================================")
     }
     
+    private fun startRingerModeMonitoring(context: Context) {
+        // Monitor ringer mode changes every second
+        ringerModeMonitorHandler = Handler(Looper.getMainLooper())
+        ringerModeMonitorHandler?.post(object : Runnable {
+            override fun run() {
+                if (requiresCaptcha && audioManager != null) {
+                    try {
+                        val currentMode = audioManager!!.ringerMode
+                        
+                        // Force normal mode if user tries to change it
+                        if (currentMode != AudioManager.RINGER_MODE_NORMAL) {
+                            Log.d(TAG, "🔊 Ringer mode changed to $currentMode! Forcing NORMAL mode...")
+                            
+                            // Try to change back to normal
+                            try {
+                                audioManager!!.ringerMode = AudioManager.RINGER_MODE_NORMAL
+                                
+                                // Also try to adjust Do Not Disturb if we have permission
+                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                                    val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                                    if (notificationManager.isNotificationPolicyAccessGranted) {
+                                        // Temporarily disable DND
+                                        notificationManager.setInterruptionFilter(
+                                            NotificationManager.INTERRUPTION_FILTER_ALL
+                                        )
+                                        Log.d(TAG, "📢 Disabled Do Not Disturb temporarily")
+                                    }
+                                }
+                            } catch (e: SecurityException) {
+                                Log.w(TAG, "Cannot change ringer mode - permission denied: ${e.message}")
+                            }
+                        }
+                        
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error in ringer mode monitoring: ${e.message}")
+                    }
+                    
+                    // Schedule next check (every 1 second for faster response)
+                    ringerModeMonitorHandler?.postDelayed(this, 1000)
+                } else {
+                    Log.d(TAG, "⏹️ Stopping ringer mode monitoring")
+                }
+            }
+        })
+    }
+    
     private fun startVolumeMonitoring(context: Context) {
-        // Monitor and restore volume every 2 seconds if user tries to change it
+        // Monitor and restore volume every 500ms for immediate response
         volumeMonitorHandler = Handler(Looper.getMainLooper())
         volumeMonitorHandler?.post(object : Runnable {
             override fun run() {
@@ -207,15 +259,19 @@ class AlarmReceiver : BroadcastReceiver() {
                             audioManager!!.setStreamVolume(
                                 AudioManager.STREAM_ALARM,
                                 maxVolume,
-                                AudioManager.FLAG_SHOW_UI
+                                AudioManager.FLAG_SHOW_UI or AudioManager.FLAG_PLAY_SOUND
                             )
                         }
                         
-                        // Check if ringer mode was changed
-                        val currentMode = audioManager!!.ringerMode
-                        if (currentMode != AudioManager.RINGER_MODE_NORMAL) {
-                            Log.d(TAG, "📢 Ringer mode changed! Restoring normal mode...")
-                            audioManager!!.ringerMode = AudioManager.RINGER_MODE_NORMAL
+                        // Also force system volume to max
+                        val systemVolume = audioManager!!.getStreamVolume(AudioManager.STREAM_SYSTEM)
+                        val systemMaxVolume = audioManager!!.getStreamMaxVolume(AudioManager.STREAM_SYSTEM)
+                        if (systemVolume < systemMaxVolume * 0.8) {
+                            audioManager!!.setStreamVolume(
+                                AudioManager.STREAM_SYSTEM,
+                                (systemMaxVolume * 0.8).toInt(),
+                                0
+                            )
                         }
                         
                         // Restart ringtone if it stopped playing
@@ -228,8 +284,8 @@ class AlarmReceiver : BroadcastReceiver() {
                         Log.e(TAG, "Error in volume monitoring: ${e.message}")
                     }
                     
-                    // Schedule next check
-                    volumeMonitorHandler?.postDelayed(this, 2000)
+                    // Schedule next check (every 500ms for faster response)
+                    volumeMonitorHandler?.postDelayed(this, 500)
                 } else {
                     Log.d(TAG, "⏹️ Stopping volume monitoring")
                 }
@@ -246,14 +302,26 @@ class AlarmReceiver : BroadcastReceiver() {
                 originalVolume = am.getStreamVolume(AudioManager.STREAM_ALARM)
                 
                 // Force normal mode (not silent or vibrate)
-                am.ringerMode = AudioManager.RINGER_MODE_NORMAL
+                try {
+                    am.ringerMode = AudioManager.RINGER_MODE_NORMAL
+                } catch (e: SecurityException) {
+                    Log.w(TAG, "Cannot change ringer mode: ${e.message}")
+                }
                 
                 // Set alarm volume to maximum
                 val maxVolume = am.getStreamMaxVolume(AudioManager.STREAM_ALARM)
                 am.setStreamVolume(
                     AudioManager.STREAM_ALARM,
                     maxVolume,
-                    AudioManager.FLAG_SHOW_UI
+                    AudioManager.FLAG_SHOW_UI or AudioManager.FLAG_PLAY_SOUND
+                )
+                
+                // Also set system volume high
+                val systemMaxVolume = am.getStreamMaxVolume(AudioManager.STREAM_SYSTEM)
+                am.setStreamVolume(
+                    AudioManager.STREAM_SYSTEM,
+                    (systemMaxVolume * 0.8).toInt(),
+                    0
                 )
                 
                 Log.d(TAG, "🔊 Forced max volume - Original: $originalVolume, Max: $maxVolume")
@@ -275,7 +343,8 @@ class AlarmReceiver : BroadcastReceiver() {
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or 
                        Intent.FLAG_ACTIVITY_CLEAR_TOP or
                        Intent.FLAG_ACTIVITY_SINGLE_TOP or
-                       Intent.FLAG_ACTIVITY_NO_USER_ACTION
+                       Intent.FLAG_ACTIVITY_NO_USER_ACTION or
+                       Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS
                 action = "OPEN_ALARM"
                 putExtra("notification_id", id)
                 putExtra("alarm_body", body)
@@ -433,7 +502,8 @@ class AlarmReceiver : BroadcastReceiver() {
             val openIntent = Intent(context, MainActivity::class.java).apply {
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or 
                        Intent.FLAG_ACTIVITY_CLEAR_TOP or
-                       Intent.FLAG_ACTIVITY_SINGLE_TOP
+                       Intent.FLAG_ACTIVITY_SINGLE_TOP or
+                       Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS
                 action = "OPEN_ALARM"
                 putExtra("notification_id", id)
                 putExtra("alarm_body", body)
@@ -499,6 +569,15 @@ class AlarmReceiver : BroadcastReceiver() {
             
             if (uri != null) {
                 ringtone = RingtoneManager.getRingtone(context, uri)
+                
+                // Set audio attributes to USAGE_ALARM for maximum priority
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                    ringtone?.audioAttributes = android.media.AudioAttributes.Builder()
+                        .setUsage(android.media.AudioAttributes.USAGE_ALARM)
+                        .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                        .build()
+                }
+                
                 ringtone?.play()
                 Log.d(TAG, "🎵 Sound playing (Repeat: $shouldRepeat)")
                 
