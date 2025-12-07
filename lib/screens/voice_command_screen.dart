@@ -20,6 +20,7 @@ class _VoiceCommandScreenState extends State<VoiceCommandScreen>
   
   bool _isListening = false;
   bool _isProcessing = false;
+  bool _isCreating = false;
   String _recognizedText = '';
   String _status = 'Tap the microphone to start';
   ReminderCommand? _parsedCommand;
@@ -91,6 +92,12 @@ class _VoiceCommandScreenState extends State<VoiceCommandScreen>
           _status = '❌ Could not understand the command';
         }
       });
+
+      // Automatically create reminder if command was understood
+      if (command != null && mounted) {
+        await Future.delayed(const Duration(milliseconds: 800));
+        await _createReminderAndNavigate();
+      }
     } else {
       setState(() {
         _isProcessing = false;
@@ -107,8 +114,13 @@ class _VoiceCommandScreenState extends State<VoiceCommandScreen>
     });
   }
 
-  Future<void> _createReminder() async {
+  Future<void> _createReminderAndNavigate() async {
     if (_parsedCommand == null) return;
+
+    setState(() {
+      _isCreating = true;
+      _status = '⏰ Creating your reminder...';
+    });
 
     final provider = context.read<ReminderProvider>();
     
@@ -134,14 +146,39 @@ class _VoiceCommandScreenState extends State<VoiceCommandScreen>
     
     if (mounted) {
       if (scheduled) {
+        // Show success message
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('✅ Reminder created and alarm scheduled!'),
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.check_circle, color: Colors.white),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    '✅ Reminder created and alarm scheduled!',
+                    style: const TextStyle(fontSize: 15),
+                  ),
+                ),
+              ],
+            ),
             backgroundColor: Colors.green,
+            duration: const Duration(seconds: 2),
           ),
         );
-        Navigator.pop(context);
+        
+        // Wait a moment for user to see the success message
+        await Future.delayed(const Duration(milliseconds: 500));
+        
+        // Navigate back to home
+        if (mounted) {
+          Navigator.pop(context);
+        }
       } else {
+        setState(() {
+          _isCreating = false;
+          _status = '⚠️ Alarm scheduling failed. Check permissions.';
+        });
+        
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('⚠️ Reminder created but alarm scheduling failed. Please check permissions.'),
@@ -204,30 +241,34 @@ class _VoiceCommandScreenState extends State<VoiceCommandScreen>
               ],
               
               // Parsed Command Preview
-              if (_parsedCommand != null) ...[
+              if (_parsedCommand != null && !_isCreating) ...[
                 _buildParsedCommandCard(),
+              ],
+              
+              // Creating indicator
+              if (_isCreating) ...[
                 const SizedBox(height: 24),
-                
-                // Create Button
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton.icon(
-                    onPressed: _createReminder,
-                    icon: const Icon(Icons.check_circle, size: 24),
-                    label: const Text(
-                      'Create Reminder',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF33CC8C),
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
+                Card(
+                  elevation: 4,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  color: Colors.green.shade50,
+                  child: Padding(
+                    padding: const EdgeInsets.all(32),
+                    child: Column(
+                      children: [
+                        const CircularProgressIndicator(
+                          valueColor: AlwaysStoppedAnimation<Color>(Colors.green),
+                        ),
+                        const SizedBox(height: 20),
+                        Text(
+                          'Setting up your alarm...',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.green.shade700,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ),
@@ -282,7 +323,7 @@ class _VoiceCommandScreenState extends State<VoiceCommandScreen>
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      'Say "important" or "high priority" for urgent reminders',
+                      'Alarm will be set automatically after recognition',
                       style: TextStyle(
                         color: Colors.amber.shade900,
                         fontSize: 13,
@@ -323,7 +364,7 @@ class _VoiceCommandScreenState extends State<VoiceCommandScreen>
 
   Widget _buildMicrophoneButton() {
     return GestureDetector(
-      onTap: _isListening ? _stopListening : _startListening,
+      onTap: (_isListening || _isCreating) ? null : _startListening,
       child: AnimatedBuilder(
         animation: _pulseAnimation,
         builder: (context, child) {
@@ -339,17 +380,19 @@ class _VoiceCommandScreenState extends State<VoiceCommandScreen>
                   end: Alignment.bottomRight,
                   colors: _isListening
                       ? [Colors.red.shade400, Colors.red.shade600]
-                      : [Colors.blue.shade400, Colors.blue.shade600],
+                      : _isCreating
+                          ? [Colors.green.shade400, Colors.green.shade600]
+                          : [Colors.blue.shade400, Colors.blue.shade600],
                 ),
                 boxShadow: [
                   BoxShadow(
-                    color: (_isListening ? Colors.red : Colors.blue).withOpacity(0.4),
+                    color: (_isListening ? Colors.red : _isCreating ? Colors.green : Colors.blue).withOpacity(0.4),
                     blurRadius: 20,
                     spreadRadius: 5,
                   ),
                 ],
               ),
-              child: _isProcessing
+              child: _isProcessing || _isCreating
                   ? const Center(
                       child: CircularProgressIndicator(
                         valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
