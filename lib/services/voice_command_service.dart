@@ -127,9 +127,9 @@ class VoiceCommandService {
   String? _extractReminderText(String text) {
     // Patterns to extract the actual reminder text
     final patterns = [
-      RegExp(r'remind me to (.+?)(?:\s+at|\s+on|\s+every|\s+tomorrow|\s+today|\s+with captcha|$)', caseSensitive: false),
-      RegExp(r'set (?:a |an )?(?:alarm|reminder) (?:to |for )?(.+?)(?:\s+at|\s+on|\s+every|\s+tomorrow|\s+today|\s+with captcha|$)', caseSensitive: false),
-      RegExp(r'create (?:a |an )?(?:alarm|reminder) (?:to |for )?(.+?)(?:\s+at|\s+on|\s+every|\s+tomorrow|\s+today|\s+with captcha|$)', caseSensitive: false),
+      RegExp(r'remind me to (.+?)(?:\s+at|\s+on|\s+every|\s+tomorrow|\s+today|\s+with captcha|\s+with security|\s+secure|$)', caseSensitive: false),
+      RegExp(r'set (?:a |an )?(?:alarm|reminder) (?:to |for )?(.+?)(?:\s+at|\s+on|\s+every|\s+tomorrow|\s+today|\s+with captcha|\s+with security|\s+secure|$)', caseSensitive: false),
+      RegExp(r'create (?:a |an )?(?:alarm|reminder) (?:to |for )?(.+?)(?:\s+at|\s+on|\s+every|\s+tomorrow|\s+today|\s+with captcha|\s+with security|\s+secure|$)', caseSensitive: false),
     ];
     
     for (final pattern in patterns) {
@@ -142,7 +142,7 @@ class VoiceCommandService {
     // Fallback: remove common command words and take what's left
     String cleaned = text
         .replaceAll(RegExp(r'\b(remind me|set alarm|create alarm|reminder)\b', caseSensitive: false), '')
-        .replaceAll(RegExp(r'\b(at|on|every|tomorrow|today|with captcha)\b.*', caseSensitive: false), '')
+        .replaceAll(RegExp(r'\b(at|on|every|tomorrow|today|with captcha|with security|secure)\b.*', caseSensitive: false), '')
         .trim();
     
     return cleaned.isNotEmpty ? cleaned : null;
@@ -319,27 +319,48 @@ class VoiceCommandService {
   }
   
   bool _requiresCaptcha(String text) {
-    // Check for CAPTCHA-related keywords
+    // Check for CAPTCHA-related keywords (case insensitive)
     final captchaKeywords = [
       'captcha',
       'with captcha',
       'security',
       'secure',
-      'solve',
       'must solve',
       'require captcha',
       'needs captcha',
       'add captcha',
       'enable captcha',
+      'important',
+      'critical',
+      'locked',
+      'protected',
+      'with security',
     ];
     
+    final lowerText = text.toLowerCase();
     for (final keyword in captchaKeywords) {
-      if (text.contains(keyword)) {
-        print('🔒 CAPTCHA keyword detected: "$keyword"');
+      if (lowerText.contains(keyword)) {
+        print('🔒 CAPTCHA keyword detected: "$keyword" in "$text"');
         return true;
       }
     }
     
+    // Also check for patterns like "solve to dismiss", "math problem", etc.
+    final captchaPatterns = [
+      RegExp(r'\bsolve\b', caseSensitive: false),
+      RegExp(r'\bmath\s+problem\b', caseSensitive: false),
+      RegExp(r'\bverify\b', caseSensitive: false),
+      RegExp(r'\bconfirm\b.*\bdismiss\b', caseSensitive: false),
+    ];
+    
+    for (final pattern in captchaPatterns) {
+      if (pattern.hasMatch(text)) {
+        print('🔒 CAPTCHA pattern matched: ${pattern.pattern}');
+        return true;
+      }
+    }
+    
+    print('ℹ️ No CAPTCHA requirement detected');
     return false;
   }
 }
