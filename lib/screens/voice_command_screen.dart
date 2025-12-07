@@ -106,14 +106,6 @@ class _VoiceCommandScreenState extends State<VoiceCommandScreen>
     }
   }
 
-  void _stopListening() {
-    _voiceService.stopListening();
-    setState(() {
-      _isListening = false;
-      _status = 'Tap the microphone to start';
-    });
-  }
-
   Future<void> _createReminderAndNavigate() async {
     if (_parsedCommand == null) return;
 
