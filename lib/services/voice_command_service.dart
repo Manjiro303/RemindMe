@@ -98,13 +98,19 @@ class VoiceCommandService {
       return null;
     }
     
-    // Default time if not specified
-    time ??= const TimeOfDay(hour: 9, minute: 0);
+    // If time is not specified, use current time + 1 minute for immediate reminder
+    if (time == null) {
+      final now = DateTime.now().add(const Duration(minutes: 1));
+      time = TimeOfDay(hour: now.hour, minute: now.minute);
+      print('⏰ No time specified, using current time + 1 minute: ${time.hour}:${time.minute}');
+    }
     
     // For recurring, default to weekdays if no days specified
     if (isRecurring && days.isEmpty) {
       days = [0, 1, 2, 3, 4]; // Mon-Fri
     }
+    
+    print('✅ Parsed: time=${time.hour}:${time.minute}, recurring=$isRecurring, captcha=$requiresCaptcha');
     
     return ReminderCommand(
       text: reminderText,
@@ -121,9 +127,9 @@ class VoiceCommandService {
   String? _extractReminderText(String text) {
     // Patterns to extract the actual reminder text
     final patterns = [
-      RegExp(r'remind me to (.+?)(?:\s+at|\s+on|\s+every|\s+tomorrow|\s+today|$)', caseSensitive: false),
-      RegExp(r'set (?:a |an )?(?:alarm|reminder) (?:to |for )?(.+?)(?:\s+at|\s+on|\s+every|\s+tomorrow|\s+today|$)', caseSensitive: false),
-      RegExp(r'create (?:a |an )?(?:alarm|reminder) (?:to |for )?(.+?)(?:\s+at|\s+on|\s+every|\s+tomorrow|\s+today|$)', caseSensitive: false),
+      RegExp(r'remind me to (.+?)(?:\s+at|\s+on|\s+every|\s+tomorrow|\s+today|\s+with captcha|$)', caseSensitive: false),
+      RegExp(r'set (?:a |an )?(?:alarm|reminder) (?:to |for )?(.+?)(?:\s+at|\s+on|\s+every|\s+tomorrow|\s+today|\s+with captcha|$)', caseSensitive: false),
+      RegExp(r'create (?:a |an )?(?:alarm|reminder) (?:to |for )?(.+?)(?:\s+at|\s+on|\s+every|\s+tomorrow|\s+today|\s+with captcha|$)', caseSensitive: false),
     ];
     
     for (final pattern in patterns) {
@@ -136,7 +142,7 @@ class VoiceCommandService {
     // Fallback: remove common command words and take what's left
     String cleaned = text
         .replaceAll(RegExp(r'\b(remind me|set alarm|create alarm|reminder)\b', caseSensitive: false), '')
-        .replaceAll(RegExp(r'\b(at|on|every|tomorrow|today)\b.*', caseSensitive: false), '')
+        .replaceAll(RegExp(r'\b(at|on|every|tomorrow|today|with captcha)\b.*', caseSensitive: false), '')
         .trim();
     
     return cleaned.isNotEmpty ? cleaned : null;
@@ -145,8 +151,8 @@ class VoiceCommandService {
   TimeOfDay? _extractTime(String text) {
     // Try to extract time in various formats
     
-    // Format: "at 3:30 PM" or "at 15:30"
-    final timePattern = RegExp(r'at\s+(\d{1,2}):(\d{2})\s*(am|pm)?', caseSensitive: false);
+    // Format: "at 3:30 PM" or "at 15:30" or "3:30 PM"
+    final timePattern = RegExp(r'(?:at\s+)?(\d{1,2}):(\d{2})\s*(am|pm)?', caseSensitive: false);
     final match = timePattern.firstMatch(text);
     
     if (match != null) {
@@ -157,11 +163,12 @@ class VoiceCommandService {
       if (period == 'pm' && hour < 12) hour += 12;
       if (period == 'am' && hour == 12) hour = 0;
       
+      print('⏰ Extracted time: $hour:$minute from "${match.group(0)}"');
       return TimeOfDay(hour: hour, minute: minute);
     }
     
-    // Format: "at 3 PM" or "at 15"
-    final simpleTimePattern = RegExp(r'at\s+(\d{1,2})\s*(am|pm)?', caseSensitive: false);
+    // Format: "at 3 PM" or "at 15" or "3 PM"
+    final simpleTimePattern = RegExp(r'(?:at\s+)?(\d{1,2})\s*(am|pm)\b', caseSensitive: false);
     final simpleMatch = simpleTimePattern.firstMatch(text);
     
     if (simpleMatch != null) {
@@ -171,16 +178,45 @@ class VoiceCommandService {
       if (period == 'pm' && hour < 12) hour += 12;
       if (period == 'am' && hour == 12) hour = 0;
       
+      print('⏰ Extracted time: $hour:00 from "${simpleMatch.group(0)}"');
       return TimeOfDay(hour: hour, minute: 0);
     }
     
-    // Named times
-    if (text.contains('morning')) return const TimeOfDay(hour: 9, minute: 0);
-    if (text.contains('noon') || text.contains('lunch')) return const TimeOfDay(hour: 12, minute: 0);
-    if (text.contains('afternoon')) return const TimeOfDay(hour: 15, minute: 0);
-    if (text.contains('evening')) return const TimeOfDay(hour: 18, minute: 0);
-    if (text.contains('night')) return const TimeOfDay(hour: 21, minute: 0);
+    // Format: "at 3" (no AM/PM, assume 24-hour or context)
+    final hourOnlyPattern = RegExp(r'at\s+(\d{1,2})(?:\s|$)', caseSensitive: false);
+    final hourMatch = hourOnlyPattern.firstMatch(text);
     
+    if (hourMatch != null) {
+      int hour = int.parse(hourMatch.group(1)!);
+      // If hour is 1-7, assume PM (afternoon/evening), otherwise use as-is
+      if (hour >= 1 && hour <= 7) hour += 12;
+      print('⏰ Extracted hour only: $hour:00');
+      return TimeOfDay(hour: hour % 24, minute: 0);
+    }
+    
+    // Named times
+    if (text.contains('morning')) {
+      print('⏰ Detected "morning" - using 9 AM');
+      return const TimeOfDay(hour: 9, minute: 0);
+    }
+    if (text.contains('noon') || text.contains('lunch')) {
+      print('⏰ Detected "noon/lunch" - using 12 PM');
+      return const TimeOfDay(hour: 12, minute: 0);
+    }
+    if (text.contains('afternoon')) {
+      print('⏰ Detected "afternoon" - using 3 PM');
+      return const TimeOfDay(hour: 15, minute: 0);
+    }
+    if (text.contains('evening')) {
+      print('⏰ Detected "evening" - using 6 PM');
+      return const TimeOfDay(hour: 18, minute: 0);
+    }
+    if (text.contains('night')) {
+      print('⏰ Detected "night" - using 9 PM');
+      return const TimeOfDay(hour: 21, minute: 0);
+    }
+    
+    print('⏰ No time found in text');
     return null;
   }
   
@@ -198,7 +234,7 @@ class VoiceCommandService {
     // Format: "on Monday", "on Tuesday"
     final days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
     for (int i = 0; i < days.length; i++) {
-      if (text.contains('on ${days[i]}')) {
+      if (text.contains('on ${days[i]}') || text.contains(days[i])) {
         // Calculate next occurrence of this day
         final targetDay = i + 1; // DateTime uses 1=Monday
         int daysToAdd = targetDay - now.weekday;
@@ -283,10 +319,28 @@ class VoiceCommandService {
   }
   
   bool _requiresCaptcha(String text) {
-    return text.contains('captcha') || 
-           text.contains('security') || 
-           text.contains('must solve') ||
-           text.contains('important');
+    // Check for CAPTCHA-related keywords
+    final captchaKeywords = [
+      'captcha',
+      'with captcha',
+      'security',
+      'secure',
+      'solve',
+      'must solve',
+      'require captcha',
+      'needs captcha',
+      'add captcha',
+      'enable captcha',
+    ];
+    
+    for (final keyword in captchaKeywords) {
+      if (text.contains(keyword)) {
+        print('🔒 CAPTCHA keyword detected: "$keyword"');
+        return true;
+      }
+    }
+    
+    return false;
   }
 }
 
