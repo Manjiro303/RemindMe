@@ -116,6 +116,9 @@ class _VoiceCommandScreenState extends State<VoiceCommandScreen>
 
     final provider = context.read<ReminderProvider>();
     
+    // Log the CAPTCHA requirement for debugging
+    print('🎤 Voice Command: Creating reminder with CAPTCHA = ${_parsedCommand!.requiresCaptcha}');
+    
     final reminder = ReminderModel(
       id: const Uuid().v4(),
       text: _parsedCommand!.text,
@@ -147,7 +150,7 @@ class _VoiceCommandScreenState extends State<VoiceCommandScreen>
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(
-                    '✅ Reminder created and alarm scheduled!',
+                    '✅ Reminder created and alarm scheduled!${reminder.requiresCaptcha ? ' (CAPTCHA enabled)' : ''}',
                     style: const TextStyle(fontSize: 15),
                   ),
                 ),
@@ -298,9 +301,9 @@ class _VoiceCommandScreenState extends State<VoiceCommandScreen>
             ),
             const SizedBox(height: 16),
             _buildExampleItem('Remind me to take medicine at 9 AM every day'),
-            _buildExampleItem('Set alarm for meeting at 3:30 PM tomorrow'),
-            _buildExampleItem('Create reminder to buy groceries on Saturday'),
-            _buildExampleItem('Remind me to workout every weekday at 6 PM'),
+            _buildExampleItem('Set alarm for meeting at 3:30 PM tomorrow with captcha'),
+            _buildExampleItem('Create secure reminder to buy groceries on Saturday'),
+            _buildExampleItem('Remind me to workout every weekday at 6 PM with security'),
             const SizedBox(height: 12),
             Container(
               padding: const EdgeInsets.all(12),
@@ -315,7 +318,7 @@ class _VoiceCommandScreenState extends State<VoiceCommandScreen>
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      'Alarm will be set automatically after recognition',
+                      'Say "with captcha" or "secure" to enable CAPTCHA protection',
                       style: TextStyle(
                         color: Colors.amber.shade900,
                         fontSize: 13,
@@ -494,22 +497,35 @@ class _VoiceCommandScreenState extends State<VoiceCommandScreen>
                 margin: const EdgeInsets.only(top: 12),
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: Colors.orange.shade50,
+                  color: Colors.red.shade50,
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.orange.shade200),
+                  border: Border.all(color: Colors.red.shade300, width: 2),
                 ),
                 child: Row(
                   children: [
-                    Icon(Icons.security, color: Colors.orange.shade700, size: 20),
-                    const SizedBox(width: 8),
+                    Icon(Icons.security, color: Colors.red.shade700, size: 24),
+                    const SizedBox(width: 12),
                     Expanded(
-                      child: Text(
-                        'CAPTCHA security enabled',
-                        style: TextStyle(
-                          color: Colors.orange.shade700,
-                          fontWeight: FontWeight.w600,
-                          fontSize: 13,
-                        ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '🔒 CAPTCHA Protection Enabled',
+                            style: TextStyle(
+                              color: Colors.red.shade700,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'You must solve a math problem to dismiss',
+                            style: TextStyle(
+                              color: Colors.red.shade600,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ],
@@ -547,7 +563,7 @@ class _VoiceCommandScreenState extends State<VoiceCommandScreen>
               style: const TextStyle(
                 fontSize: 15,
                 fontWeight: FontWeight.bold,
-                color: Color(0xFF2C3E50),
+                color: Color(0xFF2C3E3E),
               ),
               textAlign: TextAlign.right,
             ),
