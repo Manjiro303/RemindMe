@@ -29,15 +29,10 @@ class _AlarmDetailScreenState extends State<AlarmDetailScreen> with SingleTicker
   void initState() {
     super.initState();
     
-    // Add lifecycle observer to prevent backgrounding
-    WidgetsBinding.instance.addObserver(this);
-    
-    // Prevent back button and hide system UI
-    SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
-    
-    // If CAPTCHA is required, show it immediately
+    // Add lifecycle observer ONLY if CAPTCHA required
     if (widget.reminder.requiresCaptcha) {
-      // Prevent app from being minimized or closed
+      WidgetsBinding.instance.addObserver(this);
+      SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
       _preventAppMinimization();
       
       Future.delayed(const Duration(milliseconds: 100), () {
@@ -62,7 +57,6 @@ class _AlarmDetailScreenState extends State<AlarmDetailScreen> with SingleTicker
   }
 
   void _preventAppMinimization() {
-    // Keep screen on and prevent going to background
     SystemChrome.setEnabledSystemUIMode(
       SystemUiMode.immersiveSticky,
       overlays: [],
@@ -73,14 +67,13 @@ class _AlarmDetailScreenState extends State<AlarmDetailScreen> with SingleTicker
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
     
-    // If CAPTCHA is required and app goes to background, bring it back
+    // Only prevent backgrounding if CAPTCHA is required
     if (widget.reminder.requiresCaptcha && _showCaptcha) {
       if (state == AppLifecycleState.paused || 
           state == AppLifecycleState.inactive ||
           state == AppLifecycleState.hidden) {
         print('⚠️ User tried to minimize app with CAPTCHA active - preventing!');
         
-        // Try to bring app back to foreground
         Future.delayed(const Duration(milliseconds: 100), () {
           if (mounted) {
             SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
@@ -92,7 +85,9 @@ class _AlarmDetailScreenState extends State<AlarmDetailScreen> with SingleTicker
 
   @override
   void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
+    if (widget.reminder.requiresCaptcha) {
+      WidgetsBinding.instance.removeObserver(this);
+    }
     _animationController.dispose();
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     super.dispose();
@@ -145,7 +140,7 @@ class _AlarmDetailScreenState extends State<AlarmDetailScreen> with SingleTicker
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        'Closing the app, silencing, or going back is disabled until CAPTCHA is solved.',
+                        'Closing the app or going back is disabled until CAPTCHA is solved.',
                         style: TextStyle(
                           color: Colors.red.shade700,
                           fontSize: 13,
@@ -187,7 +182,7 @@ class _AlarmDetailScreenState extends State<AlarmDetailScreen> with SingleTicker
       return PopScope(
         canPop: false,
         onPopInvokedWithResult: (bool didPop, dynamic result) async {
-          if (!didPop && widget.reminder.requiresCaptcha) {
+          if (!didPop) {
             _showCannotDismissDialog();
           }
         },
@@ -204,12 +199,8 @@ class _AlarmDetailScreenState extends State<AlarmDetailScreen> with SingleTicker
     return PopScope(
       canPop: !widget.reminder.requiresCaptcha,
       onPopInvokedWithResult: (bool didPop, dynamic result) async {
-        if (!didPop) {
-          if (widget.reminder.requiresCaptcha) {
-            _showCannotDismissDialog();
-          } else {
-            await _handleDismissWithoutCaptcha();
-          }
+        if (!didPop && widget.reminder.requiresCaptcha) {
+          _showCannotDismissDialog();
         }
       },
       child: Scaffold(
@@ -311,7 +302,7 @@ class _AlarmDetailScreenState extends State<AlarmDetailScreen> with SingleTicker
                       ),
                       const SizedBox(height: 24),
 
-                      // Reminder text card with improved design
+                      // Reminder text card
                       Card(
                         elevation: 8,
                         color: Colors.white.withOpacity(0.98),
@@ -346,7 +337,7 @@ class _AlarmDetailScreenState extends State<AlarmDetailScreen> with SingleTicker
                               Divider(color: Colors.grey[300], thickness: 1),
                               const SizedBox(height: 20),
 
-                              // Details with improved layout
+                              // Details
                               _buildDetailRow(
                                 icon: Icons.access_time,
                                 label: 'Time',
@@ -406,7 +397,7 @@ class _AlarmDetailScreenState extends State<AlarmDetailScreen> with SingleTicker
                                       ),
                                       const SizedBox(height: 8),
                                       Text(
-                                        'You must solve a math problem to dismiss this alarm. Going back, closing the app, or silencing your phone is disabled.',
+                                        'You must solve a math problem to dismiss this alarm.',
                                         style: TextStyle(
                                           color: Colors.red.shade700,
                                           fontSize: 12,
@@ -532,7 +523,7 @@ class _AlarmDetailScreenState extends State<AlarmDetailScreen> with SingleTicker
   }
 
   Future<void> _handleDismissWithoutCaptcha() async {
-    print('✅ Dismissing alarm without CAPTCHA');
+    print('✅ Dismissing normal alarm (no CAPTCHA)');
     await PlatformChannelService().cancelNotification(widget.notificationId);
     if (mounted) {
       Navigator.pop(context);
