@@ -1,3 +1,4 @@
+// FILE: lib/screens/voice_command_screen.dart
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:uuid/uuid.dart';
@@ -93,7 +94,6 @@ class _VoiceCommandScreenState extends State<VoiceCommandScreen>
         }
       });
 
-      // Automatically create reminder if command was understood
       if (command != null && mounted) {
         await Future.delayed(const Duration(milliseconds: 800));
         await _createReminderAndNavigate();
@@ -116,8 +116,7 @@ class _VoiceCommandScreenState extends State<VoiceCommandScreen>
 
     final provider = context.read<ReminderProvider>();
     
-    // Log the CAPTCHA requirement for debugging
-    print('🎤 Voice Command: Creating reminder with CAPTCHA = ${_parsedCommand!.requiresCaptcha}');
+    print('🎤 Voice: Creating ${_parsedCommand!.requiresCaptcha ? "CAPTCHA" : "normal"} alarm');
     
     final reminder = ReminderModel(
       id: const Uuid().v4(),
@@ -132,16 +131,14 @@ class _VoiceCommandScreenState extends State<VoiceCommandScreen>
       enabled: true,
     );
 
-    // Add reminder to provider (this saves to storage)
     await provider.addReminder(reminder);
 
-    // Explicitly schedule the alarm for this reminder
-    print('🎤 Voice Command: Scheduling alarm for new reminder');
+    print('🎤 Voice: Scheduling alarm');
     final scheduled = await _alarmService.scheduleAlarm(reminder);
     
     if (mounted) {
       if (scheduled) {
-        // Show success message
+        final alarmType = reminder.requiresCaptcha ? 'CAPTCHA alarm' : 'normal alarm';
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Row(
@@ -150,7 +147,7 @@ class _VoiceCommandScreenState extends State<VoiceCommandScreen>
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(
-                    '✅ Reminder created and alarm scheduled!${reminder.requiresCaptcha ? ' (CAPTCHA enabled)' : ''}',
+                    '✅ $alarmType created and scheduled!',
                     style: const TextStyle(fontSize: 15),
                   ),
                 ),
@@ -161,10 +158,8 @@ class _VoiceCommandScreenState extends State<VoiceCommandScreen>
           ),
         );
         
-        // Wait a moment for user to see the success message
         await Future.delayed(const Duration(milliseconds: 500));
         
-        // Navigate back to home
         if (mounted) {
           Navigator.pop(context);
         }
@@ -206,12 +201,10 @@ class _VoiceCommandScreenState extends State<VoiceCommandScreen>
           padding: const EdgeInsets.all(24.0),
           child: Column(
             children: [
-              // Instructions Card
               _buildInstructionsCard(),
               
               const SizedBox(height: 32),
               
-              // Status
               Text(
                 _status,
                 style: const TextStyle(
@@ -224,23 +217,19 @@ class _VoiceCommandScreenState extends State<VoiceCommandScreen>
               
               const SizedBox(height: 32),
               
-              // Microphone Button
               _buildMicrophoneButton(),
               
               const SizedBox(height: 32),
               
-              // Recognized Text
               if (_recognizedText.isNotEmpty) ...[
                 _buildRecognizedTextCard(),
                 const SizedBox(height: 16),
               ],
               
-              // Parsed Command Preview
               if (_parsedCommand != null && !_isCreating) ...[
                 _buildParsedCommandCard(),
               ],
               
-              // Creating indicator
               if (_isCreating) ...[
                 const SizedBox(height: 24),
                 Card(
@@ -300,10 +289,10 @@ class _VoiceCommandScreenState extends State<VoiceCommandScreen>
               ],
             ),
             const SizedBox(height: 16),
-            _buildExampleItem('Remind me to take medicine at 9 AM every day'),
-            _buildExampleItem('Set alarm for meeting at 3:30 PM tomorrow with captcha'),
-            _buildExampleItem('Create secure reminder to buy groceries on Saturday'),
-            _buildExampleItem('Remind me to workout every weekday at 6 PM with security'),
+            _buildExampleItem('Normal: "Remind me to take medicine at 9 AM"'),
+            _buildExampleItem('CAPTCHA: "Set secure alarm for meeting at 3 PM"'),
+            _buildExampleItem('CAPTCHA: "Remind me to buy groceries with captcha"'),
+            _buildExampleItem('Normal: "Create reminder for workout tomorrow at 6 PM"'),
             const SizedBox(height: 12),
             Container(
               padding: const EdgeInsets.all(12),
@@ -312,18 +301,32 @@ class _VoiceCommandScreenState extends State<VoiceCommandScreen>
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(color: Colors.amber.shade200),
               ),
-              child: Row(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Icon(Icons.tips_and_updates, color: Colors.amber.shade700, size: 20),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      'Say "with captcha" or "secure" to enable CAPTCHA protection',
-                      style: TextStyle(
-                        color: Colors.amber.shade900,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
+                  Row(
+                    children: [
+                      Icon(Icons.lock_outline, color: Colors.amber.shade700, size: 20),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'CAPTCHA Alarm Keywords:',
+                          style: TextStyle(
+                            color: Colors.amber.shade900,
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
                       ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Say "with captcha", "secure", "with security", or "locked" to enable CAPTCHA protection',
+                    style: TextStyle(
+                      color: Colors.amber.shade900,
+                      fontSize: 13,
+                      height: 1.3,
                     ),
                   ),
                 ],
@@ -455,11 +458,12 @@ class _VoiceCommandScreenState extends State<VoiceCommandScreen>
     if (_parsedCommand == null) return const SizedBox.shrink();
     
     final cmd = _parsedCommand!;
+    final isCaptcha = cmd.requiresCaptcha;
     
     return Card(
       elevation: 4,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      color: Colors.green.shade50,
+      color: isCaptcha ? Colors.red.shade50 : Colors.green.shade50,
       child: Padding(
         padding: const EdgeInsets.all(20),
         child: Column(
@@ -467,14 +471,20 @@ class _VoiceCommandScreenState extends State<VoiceCommandScreen>
           children: [
             Row(
               children: [
-                Icon(Icons.task_alt, color: Colors.green.shade700, size: 28),
+                Icon(
+                  isCaptcha ? Icons.lock : Icons.task_alt, 
+                  color: isCaptcha ? Colors.red.shade700 : Colors.green.shade700, 
+                  size: 28
+                ),
                 const SizedBox(width: 12),
-                Text(
-                  'Reminder Details',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.green.shade700,
+                Expanded(
+                  child: Text(
+                    isCaptcha ? 'CAPTCHA Alarm Details' : 'Normal Alarm Details',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: isCaptcha ? Colors.red.shade700 : Colors.green.shade700,
+                    ),
                   ),
                 ),
               ],
@@ -492,12 +502,12 @@ class _VoiceCommandScreenState extends State<VoiceCommandScreen>
               _buildDetailRow('📅', 'Date', _formatDate(cmd.specificDate!)),
             ],
             
-            if (cmd.requiresCaptcha)
+            if (isCaptcha)
               Container(
                 margin: const EdgeInsets.only(top: 12),
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: Colors.red.shade50,
+                  color: Colors.red.shade100,
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(color: Colors.red.shade300, width: 2),
                 ),
@@ -519,9 +529,48 @@ class _VoiceCommandScreenState extends State<VoiceCommandScreen>
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            'You must solve a math problem to dismiss',
+                            'Must solve math problem to dismiss',
                             style: TextStyle(
                               color: Colors.red.shade600,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              )
+            else
+              Container(
+                margin: const EdgeInsets.only(top: 12),
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.green.shade100,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.green.shade300, width: 2),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.check_circle, color: Colors.green.shade700, size: 24),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '✅ Normal Alarm',
+                            style: TextStyle(
+                              color: Colors.green.shade700,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Can be dismissed normally',
+                            style: TextStyle(
+                              color: Colors.green.shade600,
                               fontSize: 12,
                             ),
                           ),
@@ -563,7 +612,7 @@ class _VoiceCommandScreenState extends State<VoiceCommandScreen>
               style: const TextStyle(
                 fontSize: 15,
                 fontWeight: FontWeight.bold,
-                color: Color(0xFF2C3E3E),
+                color: Color(0xFF2C3E50),
               ),
               textAlign: TextAlign.right,
             ),
