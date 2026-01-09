@@ -1,3 +1,4 @@
+// FILE: lib/services/voice_command_service.dart
 import 'package:flutter/material.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 
@@ -69,7 +70,7 @@ class VoiceCommandService {
     text = text.toLowerCase().trim();
     print('🔍 Parsing command: "$text"');
     
-    // Extract reminder text (what to remind)
+    // Extract reminder text
     String? reminderText = _extractReminderText(text);
     
     // Extract time
@@ -98,19 +99,27 @@ class VoiceCommandService {
       return null;
     }
     
-    // If time is not specified, use current time + 1 minute for immediate reminder
+    // Default time handling
     if (time == null) {
-      final now = DateTime.now().add(const Duration(minutes: 1));
-      time = TimeOfDay(hour: now.hour, minute: now.minute);
-      print('⏰ No time specified, using current time + 1 minute: ${time.hour}:${time.minute}');
+      if (specificDate != null) {
+        // If specific date mentioned but no time, use 9 AM
+        time = const TimeOfDay(hour: 9, minute: 0);
+        print('⏰ No time specified for specific date, using 9:00 AM');
+      } else {
+        // For immediate reminders
+        final now = DateTime.now().add(const Duration(minutes: 1));
+        time = TimeOfDay(hour: now.hour, minute: now.minute);
+        print('⏰ No time specified, using current time + 1 minute');
+      }
     }
     
     // For recurring, default to weekdays if no days specified
     if (isRecurring && days.isEmpty) {
       days = [0, 1, 2, 3, 4]; // Mon-Fri
+      print('📅 No days specified for recurring, defaulting to weekdays');
     }
     
-    print('✅ Parsed: time=${time.hour}:${time.minute}, recurring=$isRecurring, captcha=$requiresCaptcha');
+    print('✅ Parsed: text="$reminderText", time=${time.hour}:${time.minute}, recurring=$isRecurring, captcha=$requiresCaptcha');
     
     return ReminderCommand(
       text: reminderText,
@@ -125,33 +134,39 @@ class VoiceCommandService {
   }
   
   String? _extractReminderText(String text) {
-    // Patterns to extract the actual reminder text
+    // Remove command keywords and time/date info to get clean reminder text
     final patterns = [
-      RegExp(r'remind me to (.+?)(?:\s+at|\s+on|\s+every|\s+tomorrow|\s+today|\s+with captcha|\s+with security|\s+secure|$)', caseSensitive: false),
-      RegExp(r'set (?:a |an )?(?:alarm|reminder) (?:to |for )?(.+?)(?:\s+at|\s+on|\s+every|\s+tomorrow|\s+today|\s+with captcha|\s+with security|\s+secure|$)', caseSensitive: false),
-      RegExp(r'create (?:a |an )?(?:alarm|reminder) (?:to |for )?(.+?)(?:\s+at|\s+on|\s+every|\s+tomorrow|\s+today|\s+with captcha|\s+with security|\s+secure|$)', caseSensitive: false),
+      RegExp(r'(?:remind me to|set (?:a |an )?(?:alarm|reminder) (?:to |for )?|create (?:a |an )?(?:alarm|reminder) (?:to |for )?)(.+?)(?:\s+(?:at|on|every|tomorrow|today|with captcha|with security|secure|captcha)\b|$)', caseSensitive: false),
     ];
     
     for (final pattern in patterns) {
       final match = pattern.firstMatch(text);
       if (match != null && match.group(1) != null) {
-        return match.group(1)!.trim();
+        String extracted = match.group(1)!.trim();
+        
+        // Remove trailing time/date mentions
+        extracted = extracted
+          .replaceAll(RegExp(r'\s+(?:at|on|every|tomorrow|today|with captcha|with security|secure|captcha).*$', caseSensitive: false), '')
+          .trim();
+        
+        if (extracted.isNotEmpty) {
+          print('📝 Extracted reminder text: "$extracted"');
+          return extracted;
+        }
       }
     }
     
-    // Fallback: remove common command words and take what's left
+    // Fallback: more aggressive extraction
     String cleaned = text
-        .replaceAll(RegExp(r'\b(remind me|set alarm|create alarm|reminder)\b', caseSensitive: false), '')
-        .replaceAll(RegExp(r'\b(at|on|every|tomorrow|today|with captcha|with security|secure)\b.*', caseSensitive: false), '')
-        .trim();
+      .replaceAll(RegExp(r'^(?:remind me|set alarm|create alarm|reminder|to)\s+', caseSensitive: false), '')
+      .replaceAll(RegExp(r'\s+(?:at|on|every|tomorrow|today|with captcha|with security|secure|captcha)\b.*$', caseSensitive: false), '')
+      .trim();
     
     return cleaned.isNotEmpty ? cleaned : null;
   }
   
   TimeOfDay? _extractTime(String text) {
-    // Try to extract time in various formats
-    
-    // Format: "at 3:30 PM" or "at 15:30" or "3:30 PM"
+    // Format: "at 3:30 PM" or "at 15:30"
     final timePattern = RegExp(r'(?:at\s+)?(\d{1,2}):(\d{2})\s*(am|pm)?', caseSensitive: false);
     final match = timePattern.firstMatch(text);
     
@@ -163,12 +178,15 @@ class VoiceCommandService {
       if (period == 'pm' && hour < 12) hour += 12;
       if (period == 'am' && hour == 12) hour = 0;
       
+      // Validate hour
+      if (hour >= 24) hour = hour % 24;
+      
       print('⏰ Extracted time: $hour:$minute from "${match.group(0)}"');
       return TimeOfDay(hour: hour, minute: minute);
     }
     
-    // Format: "at 3 PM" or "at 15" or "3 PM"
-    final simpleTimePattern = RegExp(r'(?:at\s+)?(\d{1,2})\s*(am|pm)\b', caseSensitive: false);
+    // Format: "at 3 PM" or "at 3am"
+    final simpleTimePattern = RegExp(r'(?:at\s+)?(\d{1,2})\s*(am|pm)', caseSensitive: false);
     final simpleMatch = simpleTimePattern.firstMatch(text);
     
     if (simpleMatch != null) {
@@ -182,37 +200,36 @@ class VoiceCommandService {
       return TimeOfDay(hour: hour, minute: 0);
     }
     
-    // Format: "at 3" (no AM/PM, assume 24-hour or context)
+    // Format: "at 15" (24-hour)
     final hourOnlyPattern = RegExp(r'at\s+(\d{1,2})(?:\s|$)', caseSensitive: false);
     final hourMatch = hourOnlyPattern.firstMatch(text);
     
     if (hourMatch != null) {
       int hour = int.parse(hourMatch.group(1)!);
-      // If hour is 1-7, assume PM (afternoon/evening), otherwise use as-is
-      if (hour >= 1 && hour <= 7) hour += 12;
-      print('⏰ Extracted hour only: $hour:00');
-      return TimeOfDay(hour: hour % 24, minute: 0);
+      if (hour >= 24) hour = hour % 24;
+      print('⏰ Extracted hour: $hour:00');
+      return TimeOfDay(hour: hour, minute: 0);
     }
     
     // Named times
-    if (text.contains('morning')) {
-      print('⏰ Detected "morning" - using 9 AM');
+    if (text.contains(RegExp(r'\bmorning\b', caseSensitive: false))) {
+      print('⏰ Detected "morning" - using 9:00 AM');
       return const TimeOfDay(hour: 9, minute: 0);
     }
-    if (text.contains('noon') || text.contains('lunch')) {
-      print('⏰ Detected "noon/lunch" - using 12 PM');
+    if (text.contains(RegExp(r'\b(noon|lunch)\b', caseSensitive: false))) {
+      print('⏰ Detected "noon/lunch" - using 12:00 PM');
       return const TimeOfDay(hour: 12, minute: 0);
     }
-    if (text.contains('afternoon')) {
-      print('⏰ Detected "afternoon" - using 3 PM');
+    if (text.contains(RegExp(r'\bafternoon\b', caseSensitive: false))) {
+      print('⏰ Detected "afternoon" - using 3:00 PM');
       return const TimeOfDay(hour: 15, minute: 0);
     }
-    if (text.contains('evening')) {
-      print('⏰ Detected "evening" - using 6 PM');
+    if (text.contains(RegExp(r'\bevening\b', caseSensitive: false))) {
+      print('⏰ Detected "evening" - using 6:00 PM');
       return const TimeOfDay(hour: 18, minute: 0);
     }
-    if (text.contains('night')) {
-      print('⏰ Detected "night" - using 9 PM');
+    if (text.contains(RegExp(r'\bnight\b', caseSensitive: false))) {
+      print('⏰ Detected "night" - using 9:00 PM');
       return const TimeOfDay(hour: 21, minute: 0);
     }
     
@@ -223,23 +240,36 @@ class VoiceCommandService {
   DateTime? _extractDate(String text) {
     final now = DateTime.now();
     
-    if (text.contains('today')) {
+    if (text.contains(RegExp(r'\btoday\b', caseSensitive: false))) {
+      print('📅 Detected "today"');
       return now;
     }
     
-    if (text.contains('tomorrow')) {
+    if (text.contains(RegExp(r'\btomorrow\b', caseSensitive: false))) {
+      print('📅 Detected "tomorrow"');
       return now.add(const Duration(days: 1));
     }
     
-    // Format: "on Monday", "on Tuesday"
-    final days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
-    for (int i = 0; i < days.length; i++) {
-      if (text.contains('on ${days[i]}') || text.contains(days[i])) {
-        // Calculate next occurrence of this day
-        final targetDay = i + 1; // DateTime uses 1=Monday
+    // Check for specific day names
+    final dayPatterns = {
+      'monday': 1,
+      'tuesday': 2,
+      'wednesday': 3,
+      'thursday': 4,
+      'friday': 5,
+      'saturday': 6,
+      'sunday': 7,
+    };
+    
+    for (final entry in dayPatterns.entries) {
+      if (text.contains(RegExp(r'\b' + entry.key + r'\b', caseSensitive: false))) {
+        final targetDay = entry.value;
         int daysToAdd = targetDay - now.weekday;
         if (daysToAdd <= 0) daysToAdd += 7;
-        return now.add(Duration(days: daysToAdd));
+        
+        final targetDate = now.add(Duration(days: daysToAdd));
+        print('📅 Detected "${entry.key}" - date: $targetDate');
+        return targetDate;
       }
     }
     
@@ -247,120 +277,131 @@ class VoiceCommandService {
   }
   
   bool _isRecurring(String text) {
-    return text.contains('every') || 
-           text.contains('daily') || 
-           text.contains('weekday') ||
-           text.contains('weekend') ||
-           text.contains('recurring');
+    final recurringKeywords = [
+      r'\bevery\b',
+      r'\bdaily\b',
+      r'\bweekday',
+      r'\bweekend',
+      r'\brecurring\b',
+      r'\beach\b',
+      r'\ball\b.*\bdays?\b',
+    ];
+    
+    for (final keyword in recurringKeywords) {
+      if (text.contains(RegExp(keyword, caseSensitive: false))) {
+        print('🔄 Recurring keyword detected: $keyword');
+        return true;
+      }
+    }
+    
+    return false;
   }
   
   List<int> _extractDays(String text) {
     final days = <int>[];
     
-    if (text.contains('every day') || text.contains('daily')) {
+    // Every day
+    if (text.contains(RegExp(r'\bevery\s+day', caseSensitive: false)) || 
+        text.contains(RegExp(r'\bdaily\b', caseSensitive: false))) {
+      print('📅 Every day detected');
       return [0, 1, 2, 3, 4, 5, 6];
     }
     
-    if (text.contains('weekday') || text.contains('week days')) {
+    // Weekdays
+    if (text.contains(RegExp(r'\bweekday', caseSensitive: false))) {
+      print('📅 Weekdays detected');
       return [0, 1, 2, 3, 4]; // Mon-Fri
     }
     
-    if (text.contains('weekend') || text.contains('week end')) {
+    // Weekend
+    if (text.contains(RegExp(r'\bweekend', caseSensitive: false))) {
+      print('📅 Weekend detected');
       return [5, 6]; // Sat-Sun
     }
     
     // Individual days
     final dayMap = {
       'monday': 0, 'mon': 0,
-      'tuesday': 1, 'tue': 1,
+      'tuesday': 1, 'tue': 1, 'tues': 1,
       'wednesday': 2, 'wed': 2,
-      'thursday': 3, 'thu': 3,
+      'thursday': 3, 'thu': 3, 'thur': 3, 'thurs': 3,
       'friday': 4, 'fri': 4,
       'saturday': 5, 'sat': 5,
       'sunday': 6, 'sun': 6,
     };
     
-    dayMap.forEach((key, value) {
-      if (text.contains(key)) {
-        if (!days.contains(value)) {
-          days.add(value);
+    for (final entry in dayMap.entries) {
+      if (text.contains(RegExp(r'\b' + entry.key + r'\b', caseSensitive: false))) {
+        if (!days.contains(entry.value)) {
+          days.add(entry.value);
+          print('📅 Day detected: ${entry.key} (${entry.value})');
         }
       }
-    });
+    }
     
     days.sort();
     return days;
   }
   
   String _extractCategory(String text) {
-    if (text.contains('work') || text.contains('office') || text.contains('meeting')) {
-      return 'Work';
+    final categoryKeywords = {
+      'Work': ['work', 'office', 'meeting', 'job', 'business', 'project'],
+      'Health': ['health', 'medicine', 'doctor', 'workout', 'exercise', 'gym', 'pills', 'appointment'],
+      'Shopping': ['shop', 'buy', 'grocery', 'groceries', 'purchase', 'store'],
+      'Personal': ['personal', 'family', 'home', 'call', 'birthday'],
+    };
+    
+    for (final entry in categoryKeywords.entries) {
+      for (final keyword in entry.value) {
+        if (text.contains(RegExp(r'\b' + keyword + r'\b', caseSensitive: false))) {
+          print('📂 Category detected: ${entry.key} (keyword: $keyword)');
+          return entry.key;
+        }
+      }
     }
-    if (text.contains('health') || text.contains('medicine') || text.contains('doctor') || text.contains('workout')) {
-      return 'Health';
-    }
-    if (text.contains('shop') || text.contains('buy') || text.contains('grocery')) {
-      return 'Shopping';
-    }
-    if (text.contains('personal') || text.contains('family')) {
-      return 'Personal';
-    }
+    
     return 'Personal'; // Default
   }
   
   String _extractPriority(String text) {
-    if (text.contains('high priority') || text.contains('important') || text.contains('urgent')) {
+    if (text.contains(RegExp(r'\b(high priority|important|urgent|critical)\b', caseSensitive: false))) {
+      print('⚠️ High priority detected');
       return 'High';
     }
-    if (text.contains('low priority') || text.contains('not urgent')) {
+    if (text.contains(RegExp(r'\b(low priority|not urgent|later)\b', caseSensitive: false))) {
+      print('⚠️ Low priority detected');
       return 'Low';
     }
     return 'Medium'; // Default
   }
   
   bool _requiresCaptcha(String text) {
-    // Check for CAPTCHA-related keywords (case insensitive)
     final captchaKeywords = [
-      'captcha',
-      'with captcha',
-      'security',
-      'secure',
-      'must solve',
-      'require captcha',
-      'needs captcha',
-      'add captcha',
-      'enable captcha',
-      'important',
-      'critical',
-      'locked',
-      'protected',
-      'with security',
+      r'\bcaptcha\b',
+      r'\bwith captcha\b',
+      r'\bsecurity\b',
+      r'\bsecure\b',
+      r'\bmust solve\b',
+      r'\brequire captcha\b',
+      r'\bneeds captcha\b',
+      r'\badd captcha\b',
+      r'\benable captcha\b',
+      r'\blocked\b',
+      r'\bprotected\b',
+      r'\bwith security\b',
+      r'\bverify\b',
+      r'\bconfirm\b',
+      r'\bmath problem\b',
     ];
     
-    final lowerText = text.toLowerCase();
     for (final keyword in captchaKeywords) {
-      if (lowerText.contains(keyword)) {
-        print('🔒 CAPTCHA keyword detected: "$keyword" in "$text"');
+      if (text.contains(RegExp(keyword, caseSensitive: false))) {
+        print('🔒 CAPTCHA keyword detected: $keyword');
         return true;
       }
     }
     
-    // Also check for patterns like "solve to dismiss", "math problem", etc.
-    final captchaPatterns = [
-      RegExp(r'\bsolve\b', caseSensitive: false),
-      RegExp(r'\bmath\s+problem\b', caseSensitive: false),
-      RegExp(r'\bverify\b', caseSensitive: false),
-      RegExp(r'\bconfirm\b.*\bdismiss\b', caseSensitive: false),
-    ];
-    
-    for (final pattern in captchaPatterns) {
-      if (pattern.hasMatch(text)) {
-        print('🔒 CAPTCHA pattern matched: ${pattern.pattern}');
-        return true;
-      }
-    }
-    
-    print('ℹ️ No CAPTCHA requirement detected');
+    print('ℹ️ No CAPTCHA requirement detected - will be a normal alarm');
     return false;
   }
 }
