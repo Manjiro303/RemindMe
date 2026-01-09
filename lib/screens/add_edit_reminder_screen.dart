@@ -1,3 +1,4 @@
+// FILE: lib/screens/add_edit_reminder_screen.dart
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:uuid/uuid.dart';
@@ -397,22 +398,164 @@ class _AddEditReminderScreenState extends State<AddEditReminderScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const Text(
-          '🔐 Security',
+          '🔐 Alarm Security',
           style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
         ),
-        const SizedBox(height: 13),
+        const SizedBox(height: 12),
         Card(
-          child: SwitchListTile(
-            title: const Text('Require CAPTCHA to Dismiss'),
-            subtitle: const Text('User must solve a math problem to dismiss alarm'),
-            value: _requiresCaptcha,
-            onChanged: (value) {
-              setState(() => _requiresCaptcha = value);
-            },
-            activeColor: const Color(0xFF33CC8C),
+          color: _requiresCaptcha ? Colors.red.shade50 : Colors.grey[50],
+          child: Column(
+            children: [
+              SwitchListTile(
+                title: Row(
+                  children: [
+                    Icon(
+                      _requiresCaptcha ? Icons.lock : Icons.lock_open,
+                      color: _requiresCaptcha ? Colors.red.shade700 : Colors.grey[600],
+                      size: 22,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        _requiresCaptcha ? 'CAPTCHA Protection Enabled' : 'Normal Alarm',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: _requiresCaptcha ? Colors.red.shade700 : Colors.black87,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                subtitle: Padding(
+                  padding: const EdgeInsets.only(top: 4, left: 30),
+                  child: Text(
+                    _requiresCaptcha 
+                        ? 'Must solve math problem to dismiss alarm'
+                        : 'Can be dismissed normally',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: _requiresCaptcha ? Colors.red.shade600 : Colors.grey[700],
+                    ),
+                  ),
+                ),
+                value: _requiresCaptcha,
+                onChanged: (value) {
+                  setState(() => _requiresCaptcha = value);
+                },
+                activeColor: Colors.red.shade700,
+              ),
+              if (_requiresCaptcha) ...[
+                Divider(color: Colors.red.shade200, height: 1),
+                Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.red.shade100,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.red.shade300, width: 2),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(Icons.info_outline, color: Colors.red.shade700, size: 20),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'CAPTCHA Alarm Features:',
+                                style: TextStyle(
+                                  color: Colors.red.shade700,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 14,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        _buildCaptchaFeature('🔒 Cannot be dismissed without solving'),
+                        _buildCaptchaFeature('🔊 Forces maximum volume'),
+                        _buildCaptchaFeature('♾️ Rings continuously until solved'),
+                        _buildCaptchaFeature('📵 Cannot minimize app'),
+                        _buildCaptchaFeature('🧮 Requires correct math answer'),
+                      ],
+                    ),
+                  ),
+                ),
+              ] else ...[
+                Divider(color: Colors.grey[300], height: 1),
+                Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.green.shade50,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.green.shade200),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(Icons.check_circle_outline, color: Colors.green.shade700, size: 20),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'Normal Alarm Features:',
+                                style: TextStyle(
+                                  color: Colors.green.shade700,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 14,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        _buildNormalFeature('✅ Easy one-tap dismiss'),
+                        _buildNormalFeature('⏱️ Auto-stops after 5 minutes'),
+                        _buildNormalFeature('📱 Can minimize app'),
+                        _buildNormalFeature('🎵 Respects volume settings'),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ],
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildCaptchaFeature(String text) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 4),
+      child: Text(
+        text,
+        style: TextStyle(
+          color: Colors.red.shade600,
+          fontSize: 12,
+          height: 1.3,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildNormalFeature(String text) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 4),
+      child: Text(
+        text,
+        style: TextStyle(
+          color: Colors.green.shade600,
+          fontSize: 12,
+          height: 1.3,
+        ),
+      ),
     );
   }
 
@@ -569,6 +712,8 @@ class _AddEditReminderScreenState extends State<AddEditReminderScreen> {
       requiresCaptcha: _requiresCaptcha,
     );
 
+    print('💾 Saving reminder with CAPTCHA = $_requiresCaptcha');
+
     if (_isEditing) {
       provider.updateReminder(widget.reminderId!, reminder);
     } else {
@@ -578,7 +723,11 @@ class _AddEditReminderScreenState extends State<AddEditReminderScreen> {
     Navigator.pop(context);
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(_isEditing ? '✅ Reminder updated!' : '✅ Reminder created!'),
+        content: Text(
+          _isEditing 
+              ? '✅ Reminder updated!${_requiresCaptcha ? ' (CAPTCHA enabled)' : ''}' 
+              : '✅ Reminder created!${_requiresCaptcha ? ' (CAPTCHA enabled)' : ''}'
+        ),
       ),
     );
   }
